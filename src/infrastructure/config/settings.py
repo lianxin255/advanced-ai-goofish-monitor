@@ -13,6 +13,7 @@ from typing import Optional
 import os
 
 DEFAULT_TELEGRAM_API_BASE_URL = "https://api.telegram.org"
+DEFAULT_SMTP_PORT = 465
 
 
 def _env_field(default, env_name: str, **kwargs):
@@ -73,6 +74,13 @@ class NotificationSettings(_EnvSettings):
     webhook_content_type: str = _env_field("JSON", "WEBHOOK_CONTENT_TYPE")
     webhook_query_parameters: Optional[str] = _env_field(None, "WEBHOOK_QUERY_PARAMETERS")
     webhook_body: Optional[str] = _env_field(None, "WEBHOOK_BODY")
+    smtp_host: Optional[str] = _env_field(None, "SMTP_HOST")
+    smtp_port: int = _env_field(DEFAULT_SMTP_PORT, "SMTP_PORT")
+    smtp_username: Optional[str] = _env_field(None, "SMTP_USERNAME")
+    smtp_password: Optional[str] = _env_field(None, "SMTP_PASSWORD")
+    smtp_from_address: Optional[str] = _env_field(None, "SMTP_FROM_ADDRESS")
+    smtp_to_address: Optional[str] = _env_field(None, "SMTP_TO_ADDRESS")
+    smtp_use_ssl: bool = _env_field(True, "SMTP_USE_SSL")
     pcurl_to_mobile: bool = _env_field(True, "PCURL_TO_MOBILE")
 
     def has_any_notification_enabled(self) -> bool:
@@ -83,7 +91,8 @@ class NotificationSettings(_EnvSettings):
             self.gotify_url and self.gotify_token,
             self.bark_url,
             self.telegram_bot_token and self.telegram_chat_id,
-            self.webhook_url
+            self.webhook_url,
+            self.smtp_host and self.smtp_username and self.smtp_password and self.smtp_to_address,
         ])
 
 

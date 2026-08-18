@@ -25,6 +25,7 @@ from src.services.ai_request_compat import (
     is_json_output_unsupported_error,
     is_responses_api_unsupported_error,
     is_temperature_unsupported_error,
+    model_requires_thinking_disabled,
     remove_temperature_param,
 )
 from src.services.ai_response_parser import (
@@ -208,7 +209,9 @@ class AIClient:
             if not use_temperature:
                 request_params = remove_temperature_param(request_params)
 
-            if self.settings.enable_thinking:
+            if self.settings.enable_thinking or model_requires_thinking_disabled(
+                self.settings.model_name
+            ):
                 request_params["extra_body"] = {"enable_thinking": False}
 
             try:

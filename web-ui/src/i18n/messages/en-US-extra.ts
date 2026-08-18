@@ -262,6 +262,19 @@ const enUSExtra = {
       bodyPlaceholder: 'Example: ',
       variablesHelp: 'Available template variables:',
     },
+    email: {
+      title: 'Email (SMTP)',
+      description: 'Sends notifications through an SMTP server. The password is sensitive and is not echoed back.',
+      hostLabel: 'SMTP Host',
+      portLabel: 'Port',
+      useSslLabel: 'Use SSL',
+      usernameLabel: 'Username',
+      passwordLabel: 'Password / App Password',
+      fromLabel: 'From Address',
+      fromPlaceholder: 'Defaults to the username if left blank',
+      toLabel: 'To Address',
+      toPlaceholder: 'Separate multiple addresses with commas',
+    },
   },
 }
 

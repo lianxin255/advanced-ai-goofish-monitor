@@ -4,6 +4,7 @@
 from src.infrastructure.config.settings import NotificationSettings
 
 from .bark_client import BarkClient
+from .email_client import EmailClient
 from .gotify_client import GotifyClient
 from .ntfy_client import NtfyClient
 from .telegram_client import TelegramClient
@@ -35,6 +36,16 @@ def build_notification_clients(settings: NotificationSettings):
             webhook_content_type=settings.webhook_content_type,
             webhook_query_parameters=settings.webhook_query_parameters,
             webhook_body=settings.webhook_body,
+            pcurl_to_mobile=pcurl_to_mobile,
+        ),
+        EmailClient(
+            settings.smtp_host,
+            settings.smtp_port,
+            settings.smtp_username,
+            settings.smtp_password,
+            settings.smtp_from_address,
+            settings.smtp_to_address,
+            use_ssl=settings.smtp_use_ssl,
             pcurl_to_mobile=pcurl_to_mobile,
         ),
     ]

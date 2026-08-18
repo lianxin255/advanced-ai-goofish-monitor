@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 from src.infrastructure.config.env_manager import env_manager
 from src.infrastructure.config.settings import (
+    DEFAULT_SMTP_PORT,
     DEFAULT_TELEGRAM_API_BASE_URL,
     NotificationSettings,
 )
@@ -26,6 +27,13 @@ NOTIFICATION_FIELD_MAP = {
     "WEBHOOK_CONTENT_TYPE": "webhook_content_type",
     "WEBHOOK_QUERY_PARAMETERS": "webhook_query_parameters",
     "WEBHOOK_BODY": "webhook_body",
+    "SMTP_HOST": "smtp_host",
+    "SMTP_PORT": "smtp_port",
+    "SMTP_USERNAME": "smtp_username",
+    "SMTP_PASSWORD": "smtp_password",
+    "SMTP_FROM_ADDRESS": "smtp_from_address",
+    "SMTP_TO_ADDRESS": "smtp_to_address",
+    "SMTP_USE_SSL": "smtp_use_ssl",
     "PCURL_TO_MOBILE": "pcurl_to_mobile",
 }
 
@@ -47,6 +55,15 @@ CHANNEL_NOTIFICATION_FIELDS = {
         "WEBHOOK_QUERY_PARAMETERS",
         "WEBHOOK_BODY",
     },
+    "email": {
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_USERNAME",
+        "SMTP_PASSWORD",
+        "SMTP_FROM_ADDRESS",
+        "SMTP_TO_ADDRESS",
+        "SMTP_USE_SSL",
+    },
 }
 
 SECRET_NOTIFICATION_FIELDS = {
@@ -56,7 +73,11 @@ SECRET_NOTIFICATION_FIELDS = {
     "TELEGRAM_BOT_TOKEN",
     "WEBHOOK_URL",
     "WEBHOOK_HEADERS",
+    "SMTP_PASSWORD",
 }
+
+INT_NOTIFICATION_FIELDS = {"SMTP_PORT"}
+BOOL_NOTIFICATION_FIELDS = {"PCURL_TO_MOBILE", "SMTP_USE_SSL"}
 
 JSON_NOTIFICATION_FIELDS = {
     "WEBHOOK_HEADERS": True,
@@ -109,6 +130,13 @@ def build_notification_settings_response(
         "WEBHOOK_CONTENT_TYPE": notification_settings.webhook_content_type,
         "WEBHOOK_QUERY_PARAMETERS": notification_settings.webhook_query_parameters or "",
         "WEBHOOK_BODY": notification_settings.webhook_body or "",
+        "SMTP_HOST": notification_settings.smtp_host or "",
+        "SMTP_PORT": notification_settings.smtp_port or DEFAULT_SMTP_PORT,
+        "SMTP_USERNAME": notification_settings.smtp_username or "",
+        "SMTP_PASSWORD": "",
+        "SMTP_FROM_ADDRESS": notification_settings.smtp_from_address or "",
+        "SMTP_TO_ADDRESS": notification_settings.smtp_to_address or "",
+        "SMTP_USE_SSL": notification_settings.smtp_use_ssl,
         "PCURL_TO_MOBILE": notification_settings.pcurl_to_mobile,
     }
     for field in SECRET_NOTIFICATION_FIELDS:
@@ -132,6 +160,10 @@ def build_notification_status_flags(
         "telegram_chat_id_set": bool(notification_settings.telegram_chat_id),
         "webhook_url_set": bool(notification_settings.webhook_url),
         "webhook_headers_set": bool(notification_settings.webhook_headers),
+        "smtp_host_set": bool(notification_settings.smtp_host),
+        "smtp_username_set": bool(notification_settings.smtp_username),
+        "smtp_password_set": bool(notification_settings.smtp_password),
+        "smtp_to_address_set": bool(notification_settings.smtp_to_address),
     }
 
 
@@ -152,6 +184,13 @@ def build_configured_channels(
         channels.append("telegram")
     if notification_settings.webhook_url:
         channels.append("webhook")
+    if (
+        notification_settings.smtp_host
+        and notification_settings.smtp_username
+        and notification_settings.smtp_password
+        and notification_settings.smtp_to_address
+    ):
+        channels.append("email")
     return channels
 
 
@@ -240,6 +279,8 @@ def _build_channel_test_values(
     values["telegram_api_base_url"] = DEFAULT_TELEGRAM_API_BASE_URL
     values["webhook_method"] = "POST"
     values["webhook_content_type"] = "JSON"
+    values["smtp_port"] = DEFAULT_SMTP_PORT
+    values["smtp_use_ssl"] = True
     values["pcurl_to_mobile"] = True
 
     for env_name in included_env_fields:
@@ -269,6 +310,13 @@ def load_notification_settings() -> NotificationSettings:
             "webhook_content_type": _normalize_existing_text(env_manager.get_value("WEBHOOK_CONTENT_TYPE")) or "JSON",
             "webhook_query_parameters": _normalize_existing_text(env_manager.get_value("WEBHOOK_QUERY_PARAMETERS")),
             "webhook_body": _normalize_existing_text(env_manager.get_value("WEBHOOK_BODY")),
+            "smtp_host": _normalize_existing_text(env_manager.get_value("SMTP_HOST")),
+            "smtp_port": _env_int(env_manager.get_value("SMTP_PORT"), DEFAULT_SMTP_PORT),
+            "smtp_username": _normalize_existing_text(env_manager.get_value("SMTP_USERNAME")),
+            "smtp_password": _normalize_existing_text(env_manager.get_value("SMTP_PASSWORD")),
+            "smtp_from_address": _normalize_existing_text(env_manager.get_value("SMTP_FROM_ADDRESS")),
+            "smtp_to_address": _normalize_existing_text(env_manager.get_value("SMTP_TO_ADDRESS")),
+            "smtp_use_ssl": _env_bool(env_manager.get_value("SMTP_USE_SSL"), True),
             "pcurl_to_mobile": _env_bool(env_manager.get_value("PCURL_TO_MOBILE"), True),
         }
     )
@@ -281,8 +329,17 @@ def _build_notification_settings_model(values: dict) -> NotificationSettings:
 
 
 def _normalize_patch_value(env_name: str, value):
-    if env_name == "PCURL_TO_MOBILE":
+    if env_name in BOOL_NOTIFICATION_FIELDS:
         return bool(value)
+    if env_name in INT_NOTIFICATION_FIELDS:
+        if value is None or value == "":
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError) as exc:
+            raise NotificationSettingsValidationError(
+                f"{env_name} 必须是整数"
+            ) from exc
     if value is None:
         return None
     text = str(value).strip()
@@ -300,6 +357,15 @@ def _env_bool(value: str | None, default: bool) -> bool:
     if value is None:
         return default
     return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _env_int(value: str | None, default: int) -> int:
+    if value is None or str(value).strip() == "":
+        return default
+    try:
+        return int(str(value).strip())
+    except ValueError:
+        return default
 
 
 def _normalize_notification_values(values: dict) -> dict:
@@ -343,6 +409,8 @@ def _validate_notification_settings(settings: NotificationSettings) -> None:
         "TELEGRAM_CHAT_ID",
         settings.telegram_chat_id,
     )
+
+    _validate_smtp_settings(settings)
 
     if settings.webhook_method not in ALLOWED_WEBHOOK_METHODS:
         allowed = ", ".join(sorted(ALLOWED_WEBHOOK_METHODS))
@@ -394,6 +462,38 @@ def _validate_pair(
     raise NotificationSettingsValidationError(
         f"{left_name} 与 {right_name} 必须成对配置"
     )
+
+
+def _validate_smtp_settings(settings: NotificationSettings) -> None:
+    required = {
+        "SMTP_HOST": settings.smtp_host,
+        "SMTP_USERNAME": settings.smtp_username,
+        "SMTP_PASSWORD": settings.smtp_password,
+        "SMTP_TO_ADDRESS": settings.smtp_to_address,
+    }
+    present = [bool(value) for value in required.values()]
+    if any(present) and not all(present):
+        names = ", ".join(required.keys())
+        raise NotificationSettingsValidationError(f"{names} 必须同时配置")
+
+    if settings.smtp_port is not None and not (1 <= settings.smtp_port <= 65535):
+        raise NotificationSettingsValidationError("SMTP_PORT 必须在 1-65535 之间")
+
+    if settings.smtp_to_address:
+        _validate_email_field("SMTP_TO_ADDRESS", settings.smtp_to_address)
+    if settings.smtp_from_address:
+        _validate_email_field("SMTP_FROM_ADDRESS", settings.smtp_from_address)
+
+
+def _validate_email_field(field_name: str, value: str) -> None:
+    for candidate in value.split(","):
+        candidate = candidate.strip()
+        if not candidate:
+            continue
+        if "@" not in candidate or candidate.startswith("@") or candidate.endswith("@"):
+            raise NotificationSettingsValidationError(
+                f"{field_name} 包含无效的邮箱地址: {candidate}"
+            )
 
 
 def _parse_json_field(

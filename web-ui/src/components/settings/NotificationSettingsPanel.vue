@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BellRing, Radio, ShieldCheck, Send, TestTube2, Trash2, Webhook } from 'lucide-vue-next'
+import { BellRing, Mail, Radio, ShieldCheck, Send, TestTube2, Trash2, Webhook } from 'lucide-vue-next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import type { NotificationSettings, NotificationSettingsUpdate, NotificationTestResponse } from '@/api/settings'
 
-type ChannelKey = 'ntfy' | 'bark' | 'gotify' | 'wecom' | 'telegram' | 'webhook'
+type ChannelKey = 'ntfy' | 'bark' | 'gotify' | 'wecom' | 'telegram' | 'webhook' | 'email'
 
 const props = defineProps<{
   settings: NotificationSettings
@@ -37,7 +37,7 @@ const mutableInitialValues = initialValues as Record<string, string | boolean | 
 const mutableForm = form as Record<string, string | boolean | null | undefined>
 const mutableClearedFields = clearedFields as Record<string, boolean>
 
-const secretFields = ['BARK_URL', 'GOTIFY_TOKEN', 'WX_BOT_URL', 'TELEGRAM_BOT_TOKEN', 'WEBHOOK_URL', 'WEBHOOK_HEADERS'] as const
+const secretFields = ['BARK_URL', 'GOTIFY_TOKEN', 'WX_BOT_URL', 'TELEGRAM_BOT_TOKEN', 'WEBHOOK_URL', 'WEBHOOK_HEADERS', 'SMTP_PASSWORD'] as const
 const channelFields: Record<ChannelKey, (keyof NotificationSettingsUpdate)[]> = {
   ntfy: ['NTFY_TOPIC_URL'],
   bark: ['BARK_URL'],
@@ -45,6 +45,7 @@ const channelFields: Record<ChannelKey, (keyof NotificationSettingsUpdate)[]> = 
   wecom: ['WX_BOT_URL'],
   telegram: ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'TELEGRAM_API_BASE_URL'],
   webhook: ['WEBHOOK_URL', 'WEBHOOK_METHOD', 'WEBHOOK_CONTENT_TYPE', 'WEBHOOK_HEADERS', 'WEBHOOK_QUERY_PARAMETERS', 'WEBHOOK_BODY'],
+  email: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USERNAME', 'SMTP_PASSWORD', 'SMTP_FROM_ADDRESS', 'SMTP_TO_ADDRESS', 'SMTP_USE_SSL'],
 }
 
 function syncFromSettings(settings: NotificationSettings) {
@@ -56,6 +57,12 @@ function syncFromSettings(settings: NotificationSettings) {
   initialValues.WEBHOOK_CONTENT_TYPE = settings.WEBHOOK_CONTENT_TYPE ?? 'JSON'
   initialValues.WEBHOOK_QUERY_PARAMETERS = settings.WEBHOOK_QUERY_PARAMETERS ?? ''
   initialValues.WEBHOOK_BODY = settings.WEBHOOK_BODY ?? ''
+  initialValues.SMTP_HOST = settings.SMTP_HOST ?? ''
+  initialValues.SMTP_PORT = settings.SMTP_PORT ?? 465
+  initialValues.SMTP_USERNAME = settings.SMTP_USERNAME ?? ''
+  initialValues.SMTP_FROM_ADDRESS = settings.SMTP_FROM_ADDRESS ?? ''
+  initialValues.SMTP_TO_ADDRESS = settings.SMTP_TO_ADDRESS ?? ''
+  initialValues.SMTP_USE_SSL = settings.SMTP_USE_SSL ?? true
   initialValues.PCURL_TO_MOBILE = settings.PCURL_TO_MOBILE ?? true
 
   Object.assign(form, initialValues, {
@@ -65,6 +72,7 @@ function syncFromSettings(settings: NotificationSettings) {
     TELEGRAM_BOT_TOKEN: '',
     WEBHOOK_URL: '',
     WEBHOOK_HEADERS: '',
+    SMTP_PASSWORD: '',
   })
 
   secretConfigured.BARK_URL = !!settings.BARK_URL_SET
@@ -73,6 +81,7 @@ function syncFromSettings(settings: NotificationSettings) {
   secretConfigured.TELEGRAM_BOT_TOKEN = !!settings.TELEGRAM_BOT_TOKEN_SET
   secretConfigured.WEBHOOK_URL = !!settings.WEBHOOK_URL_SET
   secretConfigured.WEBHOOK_HEADERS = !!settings.WEBHOOK_HEADERS_SET
+  secretConfigured.SMTP_PASSWORD = !!settings.SMTP_PASSWORD_SET
 
   for (const field of Object.keys(clearedFields)) {
     clearedFields[field] = false
@@ -110,6 +119,10 @@ function clearChannel(channel: ChannelKey) {
     form.WEBHOOK_METHOD = 'POST'
     form.WEBHOOK_CONTENT_TYPE = 'JSON'
   }
+  if (channel === 'email') {
+    form.SMTP_PORT = 465
+    form.SMTP_USE_SSL = true
+  }
 }
 
 function buildPayload(): NotificationSettingsUpdate {
@@ -125,6 +138,7 @@ function buildScopedPayload(channel?: ChannelKey): NotificationSettingsUpdate {
   const textFields: (keyof NotificationSettingsUpdate)[] = [
     'NTFY_TOPIC_URL', 'GOTIFY_URL', 'TELEGRAM_CHAT_ID', 'TELEGRAM_API_BASE_URL', 'WEBHOOK_METHOD',
     'WEBHOOK_CONTENT_TYPE', 'WEBHOOK_QUERY_PARAMETERS', 'WEBHOOK_BODY',
+    'SMTP_HOST', 'SMTP_USERNAME', 'SMTP_FROM_ADDRESS', 'SMTP_TO_ADDRESS',
   ]
 
   for (const field of textFields) {
@@ -154,6 +168,22 @@ function buildScopedPayload(channel?: ChannelKey): NotificationSettingsUpdate {
     if (value) {
       mutablePayload[field as string] = value
     }
+  }
+
+  if (!includedFields || includedFields.has('SMTP_PORT')) {
+    if (mutableClearedFields.SMTP_PORT) {
+      payload.SMTP_PORT = null
+    } else {
+      const currentPort = String(mutableForm.SMTP_PORT ?? '').trim()
+      const initialPort = String(mutableInitialValues.SMTP_PORT ?? '').trim()
+      if (currentPort !== initialPort) {
+        payload.SMTP_PORT = currentPort ? Number(currentPort) : null
+      }
+    }
+  }
+
+  if ((!includedFields || includedFields.has('SMTP_USE_SSL')) && form.SMTP_USE_SSL !== initialValues.SMTP_USE_SSL) {
+    payload.SMTP_USE_SSL = !!form.SMTP_USE_SSL
   }
 
   if ((!includedFields || includedFields.has('PCURL_TO_MOBILE')) && form.PCURL_TO_MOBILE !== initialValues.PCURL_TO_MOBILE) {
@@ -278,6 +308,26 @@ function resolveChannelBadge(channel: ChannelKey) {
         </Card>
       </div>
 
+      <Card class="app-surface-subtle overflow-hidden border-l-4 border-l-indigo-500">
+        <CardHeader><CardTitle class="flex items-center gap-2"><Mail class="h-4 w-4 text-indigo-500" /> {{ t('notifyPanel.email.title') }}</CardTitle><CardDescription>{{ t('notifyPanel.email.description') }}</CardDescription></CardHeader>
+        <CardContent class="grid gap-4">
+          <div class="grid gap-4 md:grid-cols-3">
+            <div class="grid gap-2"><Label>{{ t('notifyPanel.email.hostLabel') }}</Label><Input :model-value="form.SMTP_HOST ?? ''" placeholder="smtp.example.com" @update:model-value="(value) => updateField('SMTP_HOST', String(value))" /></div>
+            <div class="grid gap-2"><Label>{{ t('notifyPanel.email.portLabel') }}</Label><Input type="number" :model-value="form.SMTP_PORT ?? 465" @update:model-value="(value) => updateField('SMTP_PORT', String(value))" /></div>
+            <div class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2"><Switch id="smtp-ssl" :model-value="!!form.SMTP_USE_SSL" @update:model-value="(value) => form.SMTP_USE_SSL = !!value" /><Label for="smtp-ssl" class="text-sm text-slate-700">{{ t('notifyPanel.email.useSslLabel') }}</Label></div>
+          </div>
+          <div class="grid gap-4 md:grid-cols-2">
+            <div class="grid gap-2"><Label>{{ t('notifyPanel.email.usernameLabel') }}</Label><Input :model-value="form.SMTP_USERNAME ?? ''" placeholder="you@example.com" @update:model-value="(value) => updateField('SMTP_USERNAME', String(value))" /></div>
+            <div class="grid gap-2"><Label>{{ t('notifyPanel.email.passwordLabel') }}</Label><Input type="password" :model-value="form.SMTP_PASSWORD ?? ''" :placeholder="t('notifyPanel.secretKeepPlaceholder')" @update:model-value="(value) => updateSecretField('SMTP_PASSWORD', String(value))" /></div>
+          </div>
+          <div class="grid gap-4 md:grid-cols-2">
+            <div class="grid gap-2"><Label>{{ t('notifyPanel.email.fromLabel') }}</Label><Input :model-value="form.SMTP_FROM_ADDRESS ?? ''" :placeholder="t('notifyPanel.email.fromPlaceholder')" @update:model-value="(value) => updateField('SMTP_FROM_ADDRESS', String(value))" /></div>
+            <div class="grid gap-2"><Label>{{ t('notifyPanel.email.toLabel') }}</Label><Input :model-value="form.SMTP_TO_ADDRESS ?? ''" :placeholder="t('notifyPanel.email.toPlaceholder')" @update:model-value="(value) => updateField('SMTP_TO_ADDRESS', String(value))" /></div>
+          </div>
+        </CardContent>
+        <CardFooter class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><Badge :variant="isChannelConfigured('email') ? 'default' : 'outline'">{{ resolveChannelBadge('email') }}</Badge><div class="flex flex-wrap gap-2"><Button variant="ghost" size="sm" :disabled="props.isSaving" @click="clearChannel('email')"><Trash2 class="h-4 w-4" />{{ t('notifyPanel.clear') }}</Button><Button variant="outline" size="sm" :disabled="props.isSaving" @click="handleTest('email')"><TestTube2 class="h-4 w-4" />{{ t('notifyPanel.test') }}</Button></div></CardFooter>
+      </Card>
+
       <Card class="app-surface-subtle overflow-hidden border-l-4 border-l-rose-500">
         <CardHeader><CardTitle class="flex items-center gap-2"><Webhook class="h-4 w-4 text-rose-500" /> {{ t('notifyPanel.webhook.title') }}</CardTitle><CardDescription>{{ t('notifyPanel.webhook.description') }}</CardDescription></CardHeader>
         <CardContent class="grid gap-4">
@@ -301,7 +351,7 @@ function resolveChannelBadge(channel: ChannelKey) {
         <CardFooter class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><Badge :variant="isChannelConfigured('webhook') ? 'default' : 'outline'">{{ resolveChannelBadge('webhook') }}</Badge><div class="flex flex-wrap gap-2"><Button variant="ghost" size="sm" :disabled="props.isSaving" @click="clearChannel('webhook')"><Trash2 class="h-4 w-4" />{{ t('notifyPanel.clear') }}</Button><Button variant="outline" size="sm" :disabled="props.isSaving" @click="handleTest('webhook')"><TestTube2 class="h-4 w-4" />{{ t('notifyPanel.test') }}</Button></div></CardFooter>
       </Card>
 
-      <div v-for="channel in ['ntfy', 'bark', 'gotify', 'wecom', 'telegram', 'webhook']" :key="channel">
+      <div v-for="channel in ['ntfy', 'bark', 'gotify', 'wecom', 'telegram', 'webhook', 'email']" :key="channel">
         <div v-if="testResults[channel]" class="rounded-2xl border px-4 py-3 text-sm" :class="resultClass(channel as ChannelKey)">
           {{ testResults[channel].label }}：{{ testResults[channel].message }}
         </div>

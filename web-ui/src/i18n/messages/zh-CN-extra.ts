@@ -262,6 +262,19 @@ const zhCNExtra = {
       bodyPlaceholder: '例如：',
       variablesHelp: '可用模板变量：',
     },
+    email: {
+      title: '邮件 (SMTP)',
+      description: '通过 SMTP 服务器发送邮件通知；密码为敏感字段，不回显。',
+      hostLabel: 'SMTP 服务器地址',
+      portLabel: '端口',
+      useSslLabel: '使用 SSL',
+      usernameLabel: '用户名',
+      passwordLabel: '密码 / 授权码',
+      fromLabel: '发件人地址',
+      fromPlaceholder: '留空则使用用户名',
+      toLabel: '收件人地址',
+      toPlaceholder: '多个地址用英文逗号分隔',
+    },
   },
 }
 

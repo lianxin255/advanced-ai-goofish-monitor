@@ -2,7 +2,10 @@
 AI 响应解析工具
 """
 import json
+import re
 from typing import Any
+
+_THINK_TAG_PATTERN = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 
 
 class EmptyAIResponseError(ValueError):
@@ -83,7 +86,15 @@ def _normalize_text_content(content: str) -> str:
     text = str(content).strip()
     if not text:
         raise EmptyAIResponseError("AI响应内容为空。")
+    text = _strip_thinking_tags(text)
+    if not text:
+        raise EmptyAIResponseError("AI响应内容为空。")
     return text
+
+
+def _strip_thinking_tags(text: str) -> str:
+    """移除部分推理模型直接输出在正文中的 <think>...</think> 思考过程。"""
+    return _THINK_TAG_PATTERN.sub("", text).strip()
 
 
 def _strip_code_fences(content: str) -> str:

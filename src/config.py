@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
 # --- AI & Notification Configuration ---
-load_dotenv()
+load_dotenv(override=True)
 
 # --- File Paths & Directories ---
 STATE_FILE = "xianyu_state.json"
@@ -86,11 +86,21 @@ if not client:
 if not all([BASE_URL, MODEL_NAME]) and 'prompt_generator.py' in sys.argv[0]:
     sys.exit("错误：请确保在 .env 文件中完整设置了 OPENAI_BASE_URL 和 OPENAI_MODEL_NAME。(OPENAI_API_KEY 对于某些服务是可选的)")
 
+# 这些模型默认开启思考模式，且支持通过 enable_thinking=False 关闭。
+THINKING_DISABLED_MODEL_MARKERS = ("minimax",)
+
+
+def _model_requires_thinking_disabled(model_name):
+    """识别默认需要关闭思考模式的模型（如 MiniMax）。"""
+    name = (model_name or "").lower()
+    return any(marker in name for marker in THINKING_DISABLED_MODEL_MARKERS)
+
+
 def get_ai_request_params(**kwargs):
     """
     构建AI请求参数，根据ENABLE_THINKING和ENABLE_RESPONSE_FORMAT环境变量决定是否添加相应参数
     """
-    if ENABLE_THINKING:
+    if ENABLE_THINKING or _model_requires_thinking_disabled(MODEL_NAME):
         kwargs["extra_body"] = {"enable_thinking": False}
     
     # 如果禁用结构化输出，则移除 text.format 配置

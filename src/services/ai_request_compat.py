@@ -33,6 +33,14 @@ UNSUPPORTED_TEMPERATURE_MARKERS = (
     "temperature",
     "sampling temperature",
 )
+# 这些模型默认开启思考模式，且支持通过 enable_thinking=False 关闭。
+THINKING_DISABLED_MODEL_MARKERS = ("minimax",)
+
+
+def model_requires_thinking_disabled(model_name: str) -> bool:
+    """识别默认需要关闭思考模式的模型（如 MiniMax）。"""
+    name = (model_name or "").lower()
+    return any(marker in name for marker in THINKING_DISABLED_MODEL_MARKERS)
 
 
 def build_responses_input(messages: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
