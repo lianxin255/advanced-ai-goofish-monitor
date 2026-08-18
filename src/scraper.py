@@ -55,7 +55,11 @@ from src.services.price_history_service import (
     load_price_snapshots,
     record_market_snapshots,
 )
-from src.services.result_storage_service import load_processed_link_keys
+from src.services.result_blacklist_service import match_blacklist_keywords
+from src.services.result_storage_service import (
+    load_global_blacklist_keywords_sync,
+    load_processed_link_keys,
+)
 from src.services.seller_profile_cache import SellerProfileCache
 from src.services.search_pagination import (
     advance_search_page,
@@ -329,7 +333,29 @@ def _build_context_overrides(snapshot: dict) -> dict:
 def _build_extra_headers(raw_headers: Optional[dict]) -> dict:
     if not raw_headers:
         return {}
-    excluded = {"cookie", "content-length"}
+    # 浏览器插件导出的 headers 是从某一次具体请求（通常是页面内的 XHR/fetch）里
+    # 截下来的快照，其中很多字段本质上是"逐请求变化"的，不能原样强制套用到浏览器
+    # 上下文里的每一个请求（尤其是页面导航本身），否则会产生自相矛盾的组合
+    # （例如 Referer 指向另一个页面、Sec-Fetch-Dest 是 empty 却用在文档导航上），
+    # 被 Chromium 判定为非法请求（net::ERR_INVALID_ARGUMENT），导致页面空白、
+    # 搜索接口永远拿不到风控签名参数而卡死。
+    # - cookie/content-length：由 Playwright 自行管理
+    # - user-agent：已通过 context 的 user_agent 选项单独设置，这里重复会冗余
+    # - accept/accept-encoding：随资源类型（文档/JSON/图片）变化，且 accept-encoding
+    #   本身就是浏览器禁止脚本手动设置的保留头
+    # - referer 与 sec-fetch-site/mode/dest：随"从哪个页面、发起什么类型的请求"逐次变化，
+    #   固定成某一次 XHR 快照的值会破坏后续所有导航/子资源请求
+    excluded = {
+        "cookie",
+        "content-length",
+        "user-agent",
+        "accept",
+        "accept-encoding",
+        "referer",
+        "sec-fetch-site",
+        "sec-fetch-mode",
+        "sec-fetch-dest",
+    }
     headers = {}
     for key, value in raw_headers.items():
         if not key or key.lower() in excluded or value is None:
@@ -475,6 +501,10 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
         print(f"LOG: 发现已存在结果集 {result_filename}，已加载 {len(processed_links)} 个历史商品用于去重。")
     else:
         print(f"LOG: 结果集 {result_filename} 当前为空，将写入新记录。")
+
+    global_blacklist_keywords = load_global_blacklist_keywords_sync()
+    if global_blacklist_keywords:
+        print(f"LOG: 已加载全局爬取黑名单，共 {len(global_blacklist_keywords)} 条规则。")
 
     rotation_settings = _get_rotation_settings(task_config)
     account_items = load_state_files(rotation_settings["account_state_dir"])
@@ -968,6 +998,18 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
                             )
                             continue
 
+                        if global_blacklist_keywords:
+                            matched_blacklist_keywords = match_blacklist_keywords(
+                                {"商品信息": item_data, "卖家信息": {}},
+                                global_blacklist_keywords,
+                            )
+                            if matched_blacklist_keywords:
+                                log_time(
+                                    f"[页内进度 {i}/{total_items_on_page}] 商品 '{item_data['商品标题'][:20]}...' "
+                                    f"命中全局黑名单关键词 {matched_blacklist_keywords}，已忽略。"
+                                )
+                                continue
+
                         log_time(
                             f"[页内进度 {i}/{total_items_on_page}] 发现新商品，获取详情: {item_data['商品标题'][:30]}..."
                         )
@@ -1264,8 +1306,6 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
         try:
             processed_item_count += await _run_scrape_attempt(state_path, proxy_server)
             last_error = ""
-            FAILURE_GUARD.record_success(task_name_for_guard)
-            break
         except LoginRequiredError as e:
             last_error = str(e)
             print(f"检测到登录失效/重定向: {e}")
@@ -1280,6 +1320,13 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
             print(f"本次尝试失败: {last_error}")
             if attempt < attempt_limit:
                 print("将尝试轮换账号/IP 后重试...")
+            continue
+
+        try:
+            FAILURE_GUARD.record_success(task_name_for_guard)
+        except Exception as e:
+            print(f"[FailureGuard] 记录任务成功状态失败(不影响本次抓取结果): {e}")
+        break
 
     if last_error:
         await _notify_task_failure(task_config, last_error, cookie_path=last_state_path)

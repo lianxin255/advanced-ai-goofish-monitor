@@ -22,6 +22,7 @@ from src.services.ai_request_compat import (
     create_ai_response_sync,
     is_chat_completions_api_unsupported_error,
     is_responses_api_unsupported_error,
+    model_requires_thinking_disabled,
 )
 from src.services.ai_response_parser import extract_ai_response_content
 from src.services.notification_config_service import (
@@ -36,6 +37,10 @@ from src.services.notification_config_service import (
 )
 from src.services.notification_service import build_notification_service
 from src.services.process_service import ProcessService
+from src.services.result_storage_service import (
+    load_global_blacklist_keywords,
+    save_global_blacklist_keywords,
+)
 
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -86,6 +91,13 @@ class NotificationSettingsModel(BaseModel):
     WEBHOOK_CONTENT_TYPE: Optional[str] = None
     WEBHOOK_QUERY_PARAMETERS: Optional[str] = None
     WEBHOOK_BODY: Optional[str] = None
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: Optional[int] = None
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM_ADDRESS: Optional[str] = None
+    SMTP_TO_ADDRESS: Optional[str] = None
+    SMTP_USE_SSL: Optional[bool] = None
     PCURL_TO_MOBILE: Optional[bool] = None
 
 
@@ -104,6 +116,10 @@ class AISettingsModel(BaseModel):
     OPENAI_MODEL_NAME: Optional[str] = None
     SKIP_AI_ANALYSIS: Optional[bool] = None
     PROXY_URL: Optional[str] = None
+
+
+class GlobalBlacklistRequest(BaseModel):
+    keywords: list[str] = Field(default_factory=list)
 
 
 class RotationSettingsModel(BaseModel):
@@ -212,6 +228,18 @@ async def update_rotation_settings(settings: RotationSettingsModel):
     return {"message": "轮换设置已成功更新"}
 
 
+@router.get("/global-blacklist")
+async def get_global_blacklist():
+    keywords = await load_global_blacklist_keywords()
+    return {"keywords": keywords}
+
+
+@router.put("/global-blacklist")
+async def put_global_blacklist(body: GlobalBlacklistRequest):
+    keywords = await save_global_blacklist_keywords(body.keywords)
+    return {"message": "全局黑名单已更新", "keywords": keywords}
+
+
 @router.get("/status")
 async def get_system_status(
     process_service: ProcessService = Depends(get_process_service),
@@ -308,32 +336,35 @@ async def test_ai_settings(settings: dict):
         client = OpenAI(**client_params)
         messages = [{"role": "user", "content": AI_TEST_PROMPT}]
         api_mode = CHAT_COMPLETIONS_API_MODE
+        stored_enable_thinking = env_manager.get_value("ENABLE_THINKING", "false")
+        disable_thinking = (
+            str(stored_enable_thinking).lower() == "true"
+            or model_requires_thinking_disabled(model_name)
+        )
 
         try:
-            response = create_ai_response_sync(
-                client,
+            request_params = build_ai_request_params(
                 api_mode,
-                build_ai_request_params(
-                    api_mode,
-                    model=model_name,
-                    messages=messages,
-                    max_output_tokens=AI_TEST_MAX_OUTPUT_TOKENS,
-                ),
+                model=model_name,
+                messages=messages,
+                max_output_tokens=AI_TEST_MAX_OUTPUT_TOKENS,
             )
+            if disable_thinking:
+                request_params["extra_body"] = {"enable_thinking": False}
+            response = create_ai_response_sync(client, api_mode, request_params)
         except Exception as exc:
             if not is_chat_completions_api_unsupported_error(exc):
                 raise
             api_mode = RESPONSES_API_MODE
-            response = create_ai_response_sync(
-                client,
+            request_params = build_ai_request_params(
                 api_mode,
-                build_ai_request_params(
-                    api_mode,
-                    model=model_name,
-                    messages=messages,
-                    max_output_tokens=AI_TEST_MAX_OUTPUT_TOKENS,
-                ),
+                model=model_name,
+                messages=messages,
+                max_output_tokens=AI_TEST_MAX_OUTPUT_TOKENS,
             )
+            if disable_thinking:
+                request_params["extra_body"] = {"enable_thinking": False}
+            response = create_ai_response_sync(client, api_mode, request_params)
 
         return {
             "success": True,

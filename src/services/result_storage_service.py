@@ -454,6 +454,53 @@ def _save_result_blacklist_keywords_sync(filename: str, keywords: list[str]) -> 
     return normalized_keywords
 
 
+_GLOBAL_BLACKLIST_ROW_ID = 1
+
+
+def load_global_blacklist_keywords_sync() -> list[str]:
+    """同步读取全局爬取黑名单关键词，供爬虫子进程直接调用。"""
+    bootstrap_sqlite_storage()
+    with sqlite_connection() as conn:
+        row = conn.execute(
+            "SELECT blacklist_keywords_json FROM global_blacklist_rules WHERE id = ?",
+            (_GLOBAL_BLACKLIST_ROW_ID,),
+        ).fetchone()
+    if row is None:
+        return []
+    try:
+        payload = json.loads(row["blacklist_keywords_json"] or "[]")
+    except json.JSONDecodeError:
+        return []
+    return normalize_blacklist_keywords(payload)
+
+
+async def load_global_blacklist_keywords() -> list[str]:
+    return await asyncio.to_thread(load_global_blacklist_keywords_sync)
+
+
+async def save_global_blacklist_keywords(keywords: list[str]) -> list[str]:
+    return await asyncio.to_thread(_save_global_blacklist_keywords_sync, keywords)
+
+
+def _save_global_blacklist_keywords_sync(keywords: list[str]) -> list[str]:
+    bootstrap_sqlite_storage()
+    normalized_keywords = normalize_blacklist_keywords(keywords)
+    now = datetime.now().isoformat()
+    with sqlite_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO global_blacklist_rules (id, blacklist_keywords_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                blacklist_keywords_json = excluded.blacklist_keywords_json,
+                updated_at = excluded.updated_at
+            """,
+            (_GLOBAL_BLACKLIST_ROW_ID, json.dumps(normalized_keywords, ensure_ascii=False), now),
+        )
+        conn.commit()
+    return normalized_keywords
+
+
 def load_visible_result_item_ids(filename: str) -> set[str]:
     bootstrap_sqlite_storage()
     with sqlite_connection() as conn:

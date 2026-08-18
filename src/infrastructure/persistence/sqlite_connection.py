@@ -97,6 +97,13 @@ SCHEMA_STATEMENTS = (
         updated_at TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS global_blacklist_rules (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        blacklist_keywords_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_tasks_name ON tasks(task_name)",
     """
     CREATE INDEX IF NOT EXISTS idx_results_filename_crawl

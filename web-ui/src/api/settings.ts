@@ -15,6 +15,13 @@ export interface NotificationSettings {
   WEBHOOK_CONTENT_TYPE?: string
   WEBHOOK_QUERY_PARAMETERS?: string
   WEBHOOK_BODY?: string
+  SMTP_HOST?: string
+  SMTP_PORT?: number
+  SMTP_USERNAME?: string
+  SMTP_PASSWORD?: string
+  SMTP_FROM_ADDRESS?: string
+  SMTP_TO_ADDRESS?: string
+  SMTP_USE_SSL?: boolean
   PCURL_TO_MOBILE?: boolean
   BARK_URL_SET?: boolean
   GOTIFY_TOKEN_SET?: boolean
@@ -22,6 +29,7 @@ export interface NotificationSettings {
   TELEGRAM_BOT_TOKEN_SET?: boolean
   WEBHOOK_URL_SET?: boolean
   WEBHOOK_HEADERS_SET?: boolean
+  SMTP_PASSWORD_SET?: boolean
   CONFIGURED_CHANNELS?: string[]
 }
 
@@ -40,6 +48,13 @@ export interface NotificationSettingsUpdate {
   WEBHOOK_CONTENT_TYPE?: string | null
   WEBHOOK_QUERY_PARAMETERS?: string | null
   WEBHOOK_BODY?: string | null
+  SMTP_HOST?: string | null
+  SMTP_PORT?: number | null
+  SMTP_USERNAME?: string | null
+  SMTP_PASSWORD?: string | null
+  SMTP_FROM_ADDRESS?: string | null
+  SMTP_TO_ADDRESS?: string | null
+  SMTP_USE_SSL?: boolean
   PCURL_TO_MOBILE?: boolean
 }
 
@@ -97,6 +112,10 @@ export interface SystemStatus {
     telegram_chat_id_set: boolean
     webhook_url_set: boolean
     webhook_headers_set: boolean
+    smtp_host_set: boolean
+    smtp_username_set: boolean
+    smtp_password_set: boolean
+    smtp_to_address_set: boolean
   }
   configured_notification_channels?: string[]
 }
@@ -157,6 +176,18 @@ export async function testAiSettings(settings: AiSettings): Promise<{ success: b
 
 export async function getSystemStatus(): Promise<SystemStatus> {
   return await http('/api/settings/status')
+}
+
+export async function getGlobalBlacklist(): Promise<{ keywords: string[] }> {
+  return await http('/api/settings/global-blacklist')
+}
+
+export async function updateGlobalBlacklist(keywords: string[]): Promise<{ message: string; keywords: string[] }> {
+  return await http('/api/settings/global-blacklist', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keywords })
+  })
 }
 
 export async function updateLoginState(content: string): Promise<{ message: string }> {

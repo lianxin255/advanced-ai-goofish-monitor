@@ -140,7 +140,20 @@ def _atomic_write_json(path: str, data: dict) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2, sort_keys=True)
         f.flush()
         os.fsync(f.fileno())
-    os.replace(tmp, path)
+
+    # Windows 上 os.replace 在目标文件被其他并发任务进程短暂持有句柄时会抛出
+    # PermissionError (WinError 5)；POSIX 下 replace 本身是原子且不受此影响，
+    # 重试几次足以跨过另一进程持锁的窗口期。
+    last_error: Optional[OSError] = None
+    for attempt in range(5):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError as exc:
+            last_error = exc
+            time.sleep(0.05 * (attempt + 1))
+    if last_error is not None:
+        raise last_error
 
 
 @dataclass(frozen=True)
@@ -188,9 +201,12 @@ class FailureGuard:
 
     def _update_task(self, task_key: str, updater) -> dict:
         _ensure_parent_dir(self.path)
-        with open(self.path, "a+", encoding="utf-8") as fh:
+        # 使用独立的 lock 文件而非数据文件本身加锁：若持有 self.path 的句柄不释放，
+        # _save() 内部的 os.replace(tmp, self.path) 在 Windows 上会因目标文件被
+        # 当前进程自己占用而始终失败 (WinError 5)，重试也无法恢复。
+        lock_path = f"{self.path}.lock"
+        with open(lock_path, "a+", encoding="utf-8") as fh:
             with _FileLock(fh):
-                fh.seek(0)
                 data = self._load()
                 tasks = data.setdefault("tasks", {})
                 entry = tasks.get(task_key) or {}

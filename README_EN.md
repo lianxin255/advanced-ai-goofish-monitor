@@ -11,7 +11,8 @@ A Playwright and AI-powered multi-task real-time monitoring tool for Xianyu (闲
 - **Multi-Task Concurrency**: Independent configuration for keywords, prices, filters, and AI prompts
 - **SQLite as Primary Storage**: Tasks, results, and price history are persisted in one embedded database instead of repeatedly scanning `jsonl`
 - **Advanced Filtering**: Free shipping, new listing time range, province/city/district filtering
-- **Instant Notifications**: Supports ntfy.sh, WeChat Work (企业微信), Bark, Telegram, Webhook
+- **Global Crawl Blacklist**: Items matching a blacklist keyword are ignored during crawling itself (no detail fetch, no save, no notification), across every task
+- **Instant Notifications**: Supports ntfy.sh, WeChat Work (企业微信), Bark, Telegram, Email (SMTP), Webhook
 - **Scheduled Tasks**: Cron expression configuration for periodic tasks
 - **Account & Proxy Rotation**: Multi-account management, task-account binding, proxy pool rotation with failure retry
 - **Docker Deployment**: One-click containerized deployment
@@ -128,6 +129,7 @@ docker compose down
 ### System Settings
 
 - View system status, edit prompts, and adjust proxy / rotation-related settings.
+- The "Global Blacklist" tab manages a crawl-time blacklist that applies across every task: one keyword per line (or comma-separated), with optional `re:`-prefixed regex rules (e.g. `re:\b(used|new)\b`). Matched items are skipped during crawling itself — no detail fetch, no save, no notification.
 
 </details>
 
@@ -196,6 +198,7 @@ cd web-ui && npm run build
 - `BARK_URL`
 - `WX_BOT_URL`
 - `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` / `TELEGRAM_API_BASE_URL`
+- `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_ADDRESS` / `SMTP_TO_ADDRESS` / `SMTP_USE_SSL`: email notifications; `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, and `SMTP_TO_ADDRESS` must all be set to enable this channel
 - `WEBHOOK_*`
 
 ### Proxy Rotation and Failure Guard

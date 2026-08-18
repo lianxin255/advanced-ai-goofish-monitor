@@ -14,6 +14,7 @@ export function useSettings() {
   const aiSettings = ref<AiSettings>({})
   const rotationSettings = ref<RotationSettings>({})
   const systemStatus = ref<SystemStatus | null>(null)
+  const globalBlacklistKeywords = ref<string[]>([])
   const isReady = ref(false)
   
   const isLoading = ref(false)
@@ -24,16 +25,18 @@ export function useSettings() {
     isLoading.value = true
     error.value = null
     try {
-      const [notif, ai, rotation, status] = await Promise.all([
+      const [notif, ai, rotation, status, blacklist] = await Promise.all([
         settingsApi.getNotificationSettings(),
         settingsApi.getAiSettings(),
         settingsApi.getRotationSettings(),
-        settingsApi.getSystemStatus()
+        settingsApi.getSystemStatus(),
+        settingsApi.getGlobalBlacklist()
       ])
       notificationSettings.value = notif
       aiSettings.value = ai
       rotationSettings.value = rotation
       systemStatus.value = status
+      globalBlacklistKeywords.value = blacklist.keywords
     } catch (e) {
       if (e instanceof Error) error.value = e
     } finally {
@@ -124,6 +127,19 @@ export function useSettings() {
     }
   }
 
+  async function saveGlobalBlacklist(keywords: string[]) {
+    isSaving.value = true
+    try {
+      const result = await settingsApi.updateGlobalBlacklist(keywords)
+      globalBlacklistKeywords.value = result.keywords
+    } catch (e) {
+      if (e instanceof Error) error.value = e
+      throw e
+    } finally {
+      isSaving.value = false
+    }
+  }
+
   async function testAiConnection() {
     isSaving.value = true
     try {
@@ -151,6 +167,7 @@ export function useSettings() {
     aiSettings,
     rotationSettings,
     systemStatus,
+    globalBlacklistKeywords,
     isLoading,
     isSaving,
     isReady,
@@ -160,6 +177,7 @@ export function useSettings() {
     testNotification,
     saveAiSettings,
     saveRotationSettings,
+    saveGlobalBlacklist,
     testAiConnection,
     refreshStatus,
   }

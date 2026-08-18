@@ -11,7 +11,8 @@
 - **AI 驱动**: 自然语言创建任务，多模态模型深度分析商品
 - **多任务并发**: 独立配置关键词、价格、筛选条件和 AI Prompt
 - **高级筛选**: 包邮、新发布时间范围、省/市/区三级区域筛选
-- **即时通知**: 支持 ntfy.sh、企业微信、Bark、Telegram、Webhook等多渠道
+- **全局爬取黑名单**: 命中黑名单关键词的商品在爬取阶段直接忽略（不获取详情、不保存、不通知），对所有任务生效
+- **即时通知**: 支持 ntfy.sh、企业微信、Bark、Telegram、邮件(SMTP)、Webhook等多渠道
 - **定时调度**: 支持 Cron 配置周期性任务
 - **账号与代理轮换**: 多账号管理、任务绑定账号、代理池轮换与失败重试
 - **Docker 部署**: 一键容器化部署
@@ -117,6 +118,7 @@ docker compose up -d
 ### 系统设置
 
 - 可查看系统状态、编辑 Prompt、调整代理与轮换相关配置。
+- “全局黑名单”标签页维护跨任务生效的爬取黑名单：每行一个关键词，支持逗号分隔，也支持 `re:` 前缀的正则规则（如 `re:\b(二手|全新)\b`）。命中规则的商品在爬取阶段即被跳过，不会进入详情抓取、结果保存或通知流程。
 
 </details>
 
@@ -209,6 +211,7 @@ cd web-ui && npm run build
 - `BARK_URL`
 - `WX_BOT_URL`
 - `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` / `TELEGRAM_API_BASE_URL`
+- `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_ADDRESS` / `SMTP_TO_ADDRESS` / `SMTP_USE_SSL`：邮件通知，`SMTP_HOST`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`SMTP_TO_ADDRESS` 需同时配置才会启用
 - `WEBHOOK_*`
 
 ### 代理轮换与失败保护

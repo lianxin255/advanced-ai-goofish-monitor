@@ -1,17 +1,48 @@
+# Editors / IDEs
 .idea
 *.iml
+.vscode/
+.claude/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Secrets / local env
 xianyu_state.json
 .env
+.env.local
+.env.*.local
 .aider*
-images/
-logs/
-jsonl/
+
+# Python
 __pycache__/
-src/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+.venv/
+venv/
+
+# Node / frontend build output
+node_modules/
 dist/
+
+# App data & runtime artifacts
+images/
+task_images/
+logs/
+*.log
+jsonl/
 state/
 config.json
 prompts/
 .serena/
 price_history/
 data/
+archive/

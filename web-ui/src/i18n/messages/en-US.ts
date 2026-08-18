@@ -237,6 +237,7 @@ const enUS = {
     tabs: {
       ai: 'AI Model',
       rotation: 'Rotation',
+      blacklist: 'Global Blacklist',
       notifications: 'Notifications',
       status: 'System Status',
       prompts: 'Prompts',
@@ -259,6 +260,17 @@ const enUS = {
       testFailed: 'AI connection test failed.',
     },
     rotation: { saved: 'Rotation settings saved.', saveFailed: 'Failed to save rotation settings.' },
+    blacklist: {
+      title: 'Global Crawl Blacklist',
+      description: 'Items matching these keywords are ignored during crawling itself (no detail fetch, no save, no notification), across every task.',
+      rulesLabel: 'Blacklist Keywords',
+      rulesHint: 'One keyword per line, or comma-separated. Case-insensitive by default. For precise matching, use an advanced rule such as: re:\\b(pm|pro[\\s-]?max)\\b',
+      rulesPlaceholder: 'e.g. refurbished\nfake\nre:\\b(used|new)\\b',
+      loading: 'Loading global blacklist...',
+      save: 'Save Blacklist',
+      saved: 'Global blacklist saved.',
+      saveFailed: 'Failed to save global blacklist.',
+    },
     status: {
       title: 'System Status',
       refresh: 'Refresh Status',
