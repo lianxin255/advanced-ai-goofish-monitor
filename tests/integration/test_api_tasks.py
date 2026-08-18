@@ -2,6 +2,93 @@ import asyncio
 import time
 
 
+def test_rename_task_migrates_results_and_price_history(
+    api_client, api_context, sample_task_payload, monkeypatch, tmp_path
+):
+    # 结果/价格历史走的是独立的全局 sqlite_connection()（跟 api_context 的任务库路径无关），
+    # 必须单独用 APP_DATABASE_FILE 隔离，否则会污染仓库根目录下的真实 data/app.sqlite3。
+    monkeypatch.setenv("APP_DATABASE_FILE", str(tmp_path / "results.sqlite3"))
+
+    from src.infrastructure.persistence.storage_names import build_result_filename
+    from src.services.price_history_service import (
+        load_price_snapshots,
+        record_market_snapshots,
+    )
+    from src.services.result_storage_service import (
+        query_result_records,
+        save_result_record,
+    )
+
+    response = api_client.post("/api/tasks/", json=sample_task_payload)
+    assert response.status_code == 200
+
+    old_keyword = sample_task_payload["keyword"]
+    old_task_name = sample_task_payload["task_name"]
+    old_filename = build_result_filename(old_keyword)
+
+    item = {
+        "商品ID": "cam-1",
+        "商品标题": "Sony A7M4 95新",
+        "商品链接": "https://www.goofish.com/item?id=cam-1",
+        "当前售价": "¥9000",
+    }
+    record = {
+        "爬取时间": "2026-03-10T10:00:00",
+        "搜索关键字": old_keyword,
+        "任务名称": old_task_name,
+        "商品信息": item,
+        "ai_analysis": {"analysis_source": "keyword", "is_recommended": False},
+    }
+    asyncio.run(save_result_record(record, old_keyword))
+    record_market_snapshots(
+        keyword=old_keyword,
+        task_name=old_task_name,
+        items=[item],
+        run_id="run-1",
+        snapshot_time="2026-03-10T10:00:00",
+    )
+
+    new_keyword = "sony a7m4 pro"
+    new_task_name = "索尼 A7M4（已改名）"
+    new_filename = build_result_filename(new_keyword)
+
+    response = api_client.patch(
+        "/api/tasks/0",
+        json={"keyword": new_keyword, "task_name": new_task_name},
+    )
+    assert response.status_code == 200
+
+    # 旧 filename/keyword 下不应再残留结果或价格快照……
+    old_total, _ = asyncio.run(query_result_records(
+        old_filename,
+        ai_recommended_only=False,
+        keyword_recommended_only=False,
+        sort_by="crawl_time",
+        sort_order="desc",
+        page=1,
+        limit=20,
+    ))
+    assert old_total == 0
+    assert load_price_snapshots(old_keyword) == []
+
+    # ……而是迁移到了新 filename/keyword 下，且 task_name 字段也一并更新。
+    new_total, new_items = asyncio.run(query_result_records(
+        new_filename,
+        ai_recommended_only=False,
+        keyword_recommended_only=False,
+        sort_by="crawl_time",
+        sort_order="desc",
+        page=1,
+        limit=20,
+    ))
+    assert new_total == 1
+    assert new_items[0]["商品信息"]["商品ID"] == "cam-1"
+
+    new_snapshots = load_price_snapshots(new_keyword)
+    assert len(new_snapshots) == 1
+    assert new_snapshots[0]["task_name"] == new_task_name
+
+
 def test_create_list_update_delete_task(api_client, api_context, sample_task_payload):
     response = api_client.post("/api/tasks/", json=sample_task_payload)
     assert response.status_code == 200

@@ -3,11 +3,15 @@ Dashboard 数据拼装辅助函数
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from typing import Any
 
 from src.domain.models.task import Task
-from src.services.price_history_service import parse_price_value
+from src.services.price_history_service import (
+    build_price_history_insights,
+    parse_price_value,
+)
 from src.services.result_file_service import (
     normalize_keyword_from_filename,
 )
@@ -52,6 +56,10 @@ def build_empty_summary(task: Task) -> dict[str, Any]:
         "latest_crawl_time": None,
         "latest_recommended_title": None,
         "latest_recommended_price": None,
+        "history_avg_price": None,
+        "history_sample_count": None,
+        "history_snapshot_at": None,
+        "history_daily_trend": [],
     }
 
 
@@ -108,6 +116,10 @@ def _build_fallback_summary(task_name: str, keyword: str) -> dict[str, Any]:
         "latest_crawl_time": None,
         "latest_recommended_title": None,
         "latest_recommended_price": None,
+        "history_avg_price": None,
+        "history_sample_count": None,
+        "history_snapshot_at": None,
+        "history_daily_trend": [],
     }
 
 
@@ -259,6 +271,9 @@ async def summarize_result_file(
     if scan_activity:
         activities.append(scan_activity)
 
+    price_history = await asyncio.to_thread(build_price_history_insights, keyword)
+    history_summary = price_history.get("history_summary") or {}
+
     summary.update(
         {
             "filename": filename,
@@ -269,6 +284,10 @@ async def summarize_result_file(
             "latest_crawl_time": serialize_timestamp(latest_crawl_time),
             "latest_recommended_title": title,
             "latest_recommended_price": price,
+            "history_avg_price": history_summary.get("avg_price"),
+            "history_sample_count": history_summary.get("unique_items"),
+            "history_snapshot_at": price_history.get("latest_snapshot_at"),
+            "history_daily_trend": price_history.get("daily_trend") or [],
         }
     )
     return summary, activities, latest_crawl_time

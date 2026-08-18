@@ -121,3 +121,85 @@ def test_dashboard_summary_aggregates_tasks_and_results(tmp_path, monkeypatch):
     assert "AI 推荐" in statuses
     assert "结果已更新" in statuses
     assert "运行中" in statuses
+
+    # 没有历史价格快照时，均价字段应为空而不是报错。
+    assert watch_summary["history_avg_price"] is None
+    assert ipad_summary["history_avg_price"] is None
+
+
+def test_dashboard_summary_includes_latest_history_avg_price(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    jsonl_dir = tmp_path / "jsonl"
+    jsonl_dir.mkdir(parents=True, exist_ok=True)
+
+    repository = SqliteTaskRepository(
+        db_path=str(tmp_path / "app.sqlite3"),
+        legacy_config_file=None,
+    )
+    task_service = TaskService(repository)
+    app = FastAPI()
+    app.include_router(dashboard.router)
+    app.dependency_overrides[deps.get_task_service] = lambda: task_service
+
+    client = TestClient(app)
+
+    task = TaskCreate(
+        task_name="索尼 A7R4 相机",
+        keyword="索尼 A7R4 相机",
+        description="只关注95新以上的机身。",
+        max_pages=3,
+        personal_only=True,
+    )
+    import asyncio
+
+    created = asyncio.run(task_service.create_task(task))
+
+    record = {
+        "爬取时间": "2026-03-10T10:00:00",
+        "搜索关键字": created.keyword,
+        "任务名称": created.task_name,
+        "商品信息": {
+            "商品ID": "cam-1",
+            "商品标题": "索尼 A7R4 95新",
+            "商品链接": "https://www.goofish.com/item?id=cam-1",
+            "当前售价": "¥12000",
+        },
+        "ai_analysis": {
+            "analysis_source": "ai",
+            "is_recommended": False,
+            "reason": "价格偏高",
+        },
+    }
+    _write_jsonl(jsonl_dir / "sony_a7r4_full_data.jsonl", [record])
+
+    from src.services.price_history_service import record_market_snapshots
+
+    record_market_snapshots(
+        keyword=created.keyword,
+        task_name=created.task_name,
+        items=[record["商品信息"]],
+        run_id="run-1",
+        snapshot_time="2026-03-10T10:00:00",
+    )
+
+    response = client.get("/api/dashboard/summary")
+    assert response.status_code == 200
+    payload = response.json()
+
+    summary = next(
+        item for item in payload["task_summaries"] if item["task_name"] == "索尼 A7R4 相机"
+    )
+    assert summary["history_avg_price"] == 12000
+    assert summary["history_sample_count"] == 1
+    assert summary["history_snapshot_at"] == "2026-03-10T10:00:00"
+    assert summary["history_daily_trend"] == [
+        {
+            "day": "2026-03-10",
+            "sample_count": 1,
+            "avg_price": 12000,
+            "median_price": 12000,
+            "min_price": 12000,
+            "max_price": 12000,
+        }
+    ]

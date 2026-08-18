@@ -191,6 +191,42 @@ def load_price_snapshots(keyword: str) -> list[dict]:
     return snapshots
 
 
+def rename_price_history(old_keyword: str, new_keyword: str, new_task_name: str) -> bool:
+    """任务改关键词后，把历史价格快照迁移到新的 keyword_slug 下。
+
+    若新 keyword 的 slug 已被别的任务占用，跳过迁移（返回 False）而不是把两份历史数据混在一起。
+    """
+    old_slug = normalize_keyword_slug(old_keyword)
+    new_slug = normalize_keyword_slug(new_keyword)
+    bootstrap_sqlite_storage()
+    with sqlite_connection() as conn:
+        if old_slug == new_slug:
+            conn.execute(
+                "UPDATE price_snapshots SET keyword = ?, task_name = ? WHERE keyword_slug = ?",
+                (new_keyword, new_task_name, old_slug),
+            )
+            conn.commit()
+            return True
+
+        collision = conn.execute(
+            "SELECT 1 FROM price_snapshots WHERE keyword_slug = ? LIMIT 1",
+            (new_slug,),
+        ).fetchone()
+        if collision is not None:
+            return False
+
+        conn.execute(
+            """
+            UPDATE price_snapshots
+            SET keyword_slug = ?, keyword = ?, task_name = ?
+            WHERE keyword_slug = ?
+            """,
+            (new_slug, new_keyword, new_task_name, old_slug),
+        )
+        conn.commit()
+        return True
+
+
 def delete_price_snapshots(keyword: str) -> int:
     bootstrap_sqlite_storage()
     with sqlite_connection() as conn:

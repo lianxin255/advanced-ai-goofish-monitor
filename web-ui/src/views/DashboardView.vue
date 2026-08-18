@@ -16,6 +16,7 @@ import {
   Search,
   Sparkles,
   Target,
+  Wallet,
   Zap,
 } from 'lucide-vue-next'
 
@@ -27,6 +28,7 @@ const {
   suggestion,
   stats,
   activities,
+  taskSummaries,
   isLoading,
   error,
 } = useDashboard()
@@ -104,6 +106,21 @@ const insightCards = computed(() => {
     },
   ]
 })
+
+const priceOverviewRows = computed(() =>
+  [...taskSummaries.value].sort((a, b) => {
+    const aHasPrice = a.history_avg_price !== null ? 1 : 0
+    const bHasPrice = b.history_avg_price !== null ? 1 : 0
+    if (aHasPrice !== bHasPrice) return bHasPrice - aHasPrice
+    return a.task_name.localeCompare(b.task_name)
+  })
+)
+
+function openTaskPrice(item: { filename: string | null }) {
+  if (item.filename) {
+    router.push({ name: 'Results', query: { file: item.filename } })
+  }
+}
 
 function goCreateTask() {
   router.push({
@@ -290,5 +307,46 @@ function openActivity(activity: { filename: string | null; type: string }) {
         </div>
       </div>
     </div>
+    <Card class="app-surface border-none">
+      <CardHeader class="border-b border-slate-100/60 pb-5">
+        <CardTitle class="text-lg font-bold text-slate-800 flex items-center gap-2">
+          <Wallet class="w-5 h-5 text-emerald-500" />
+          {{ t('dashboard.priceOverview.title') }}
+        </CardTitle>
+        <p class="mt-1 text-sm text-slate-500">{{ t('dashboard.priceOverview.description') }}</p>
+      </CardHeader>
+      <CardContent class="p-6">
+        <div v-if="priceOverviewRows.length === 0" class="px-6 py-10 text-center text-sm text-slate-500">
+          {{ t('dashboard.priceOverview.empty') }}
+        </div>
+        <div v-else class="grid gap-5 lg:grid-cols-2">
+          <div
+            v-for="item in priceOverviewRows"
+            :key="item.task_id ?? item.task_name"
+            class="rounded-2xl border border-slate-200/70 bg-white/70 p-4 shadow-sm transition-colors"
+            :class="item.filename ? 'hover:border-primary/40 cursor-pointer' : ''"
+            @click="openTaskPrice(item)"
+          >
+            <div class="flex items-center justify-between gap-4">
+              <div class="min-w-0">
+                <p class="text-sm font-bold text-slate-700 truncate">{{ item.task_name }}</p>
+                <p class="text-[11px] text-slate-400 truncate">{{ item.keyword }}</p>
+              </div>
+              <div class="text-right shrink-0">
+                <p class="text-lg font-semibold text-slate-900">
+                  {{ item.history_avg_price !== null ? `¥${item.history_avg_price}` : t('dashboard.priceOverview.noHistory') }}
+                </p>
+                <p class="text-[11px] text-slate-400">
+                  <template v-if="item.history_sample_count">
+                    {{ t('dashboard.priceOverview.sampleLabel', { count: item.history_sample_count }) }}
+                  </template>
+                </p>
+              </div>
+            </div>
+            <PriceTrendChart class="mt-3" :points="item.history_daily_trend" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   </div>
 </template>

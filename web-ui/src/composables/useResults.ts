@@ -180,6 +180,9 @@ export function useResults() {
   })
 
   on('tasks_updated', () => {
+    // A task rename can also change its keyword, which renames the underlying
+    // result filename server-side — refresh the file list too, not just the labels.
+    fetchFiles()
     fetchTaskNameMap()
   })
 

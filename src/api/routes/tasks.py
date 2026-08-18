@@ -26,8 +26,9 @@ from src.prompt_utils import generate_criteria
 from src.utils import resolve_task_log_path
 from src.services.account_strategy_service import normalize_account_strategy
 from src.infrastructure.persistence.storage_names import build_result_filename
-from src.services.price_history_service import delete_price_snapshots
-from src.services.result_storage_service import delete_result_file_records
+from src.services.price_history_service import delete_price_snapshots, rename_price_history
+from src.services.result_storage_service import delete_result_file_records, rename_result_records
+from src.api.routes import websocket
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 async def _reload_scheduler_if_needed(
@@ -83,6 +84,7 @@ async def create_task(
     """创建新任务"""
     task = await service.create_task(task_create)
     await _reload_scheduler_if_needed(service, scheduler_service)
+    await websocket.broadcast_message("tasks_updated", {"task_id": task.id})
     return {"message": "任务创建成功", "task": serialize_task(task, scheduler_service)}
 @router.post("/generate", response_model=dict)
 async def generate_task(
@@ -117,6 +119,7 @@ async def generate_task(
 
         task = await service.create_task(build_task_create(req, ""))
         await _reload_scheduler_if_needed(service, scheduler_service)
+        await websocket.broadcast_message("tasks_updated", {"task_id": task.id})
         return {"message": "任务创建成功。", "task": serialize_task(task, scheduler_service)}
 
     except HTTPException:
@@ -206,8 +209,28 @@ async def update_task(
                 import traceback
                 print(traceback.format_exc())
                 raise HTTPException(status_code=500, detail=error_msg)
+        old_keyword = existing_task.keyword
+        old_task_name = existing_task.task_name
+
         task = await service.update_task(task_id, task_update)
         await _reload_scheduler_if_needed(service, scheduler_service)
+
+        if (old_keyword or "").strip() != (task.keyword or "").strip() or old_task_name != task.task_name:
+            try:
+                old_filename = build_result_filename(old_keyword)
+                new_filename = build_result_filename(task.keyword)
+                migrated = await rename_result_records(
+                    old_filename, new_filename, task.keyword, task.task_name
+                )
+                if not migrated:
+                    print(
+                        f"[任务更新] 结果迁移被跳过：关键词 '{task.keyword}' 对应的结果文件已被其他任务占用。"
+                    )
+                rename_price_history(old_keyword, task.keyword, task.task_name)
+            except Exception as e:
+                print(f"迁移任务结果/价格历史时出错: {e}")
+
+        await websocket.broadcast_message("tasks_updated", {"task_id": task.id})
         return {"message": "任务更新成功", "task": serialize_task(task, scheduler_service)}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -248,6 +271,7 @@ async def delete_task(
             os.remove(log_file_path)
     except Exception as e:
         print(f"删除任务日志文件时出错: {e}")
+    await websocket.broadcast_message("tasks_updated", {"task_id": task_id})
     return {"message": "任务删除成功"}
 @router.post("/start/{task_id}", response_model=dict)
 async def start_task(

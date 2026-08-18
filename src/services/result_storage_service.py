@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import sqlite3
 from datetime import datetime
 
 from src.infrastructure.persistence.sqlite_bootstrap import bootstrap_sqlite_storage
@@ -499,6 +500,66 @@ def _save_global_blacklist_keywords_sync(keywords: list[str]) -> list[str]:
         )
         conn.commit()
     return normalized_keywords
+
+
+async def rename_result_records(
+    old_filename: str,
+    new_filename: str,
+    new_keyword: str,
+    new_task_name: str,
+) -> bool:
+    """任务改名/改关键词后，把该任务的历史结果迁移到新的 filename/keyword 下。
+
+    结果表以 result_filename（由 keyword 派生）为主键关联，不认 task_id；如果不迁移，
+    改关键词后旧的结果行会永远关联不到任何任务，结果页只能回退显示"未命名"。
+    若新 filename 已经被别的任务占用（keyword 冲突），为避免把两份数据混在一起，
+    直接跳过迁移并返回 False，调用方可以据此提示用户。
+    """
+    return await asyncio.to_thread(
+        _rename_result_records_sync, old_filename, new_filename, new_keyword, new_task_name
+    )
+
+
+def _rename_result_records_sync(
+    old_filename: str,
+    new_filename: str,
+    new_keyword: str,
+    new_task_name: str,
+) -> bool:
+    bootstrap_sqlite_storage()
+    with sqlite_connection() as conn:
+        if old_filename == new_filename:
+            conn.execute(
+                "UPDATE result_items SET task_name = ? WHERE result_filename = ?",
+                (new_task_name, old_filename),
+            )
+            conn.commit()
+            return True
+
+        collision = conn.execute(
+            "SELECT 1 FROM result_items WHERE result_filename = ? LIMIT 1",
+            (new_filename,),
+        ).fetchone()
+        if collision is not None:
+            return False
+
+        conn.execute(
+            """
+            UPDATE result_items
+            SET result_filename = ?, keyword = ?, task_name = ?
+            WHERE result_filename = ?
+            """,
+            (new_filename, new_keyword, new_task_name, old_filename),
+        )
+        try:
+            conn.execute(
+                "UPDATE result_blacklist_rules SET result_filename = ? WHERE result_filename = ?",
+                (new_filename, old_filename),
+            )
+        except sqlite3.IntegrityError:
+            pass
+        conn.commit()
+        return True
 
 
 def load_visible_result_item_ids(filename: str) -> set[str]:

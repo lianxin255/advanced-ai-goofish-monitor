@@ -122,6 +122,14 @@ const zhCN = {
       empty: '当前没有可展示的动态。',
       viewAllLogs: '查看全部日志',
     },
+    priceOverview: {
+      title: '各任务最新历史均价',
+      description: '每个任务在其价格历史窗口内的最新均价，可用于快速比较不同关键词的市场行情。',
+      empty: '暂无任务，先创建一个监测任务。',
+      noHistory: '暂无历史数据',
+      sampleLabel: '样本 {count} 件',
+      updatedAt: '更新于 {time}',
+    },
     suggestion: {
       sectionTitle: 'AI 智能策略',
       firstTaskTitle: '开始首个真实监测任务',

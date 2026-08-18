@@ -122,6 +122,14 @@ const enUS = {
       empty: 'No activity to display right now.',
       viewAllLogs: 'View All Logs',
     },
+    priceOverview: {
+      title: 'Latest Historical Average Price by Task',
+      description: 'Each task\'s latest average price within its price-history window, for quickly comparing market levels across keywords.',
+      empty: 'No tasks yet. Create a monitoring task to get started.',
+      noHistory: 'No history yet',
+      sampleLabel: '{count} samples',
+      updatedAt: 'Updated {time}',
+    },
     suggestion: {
       sectionTitle: 'AI Strategy',
       firstTaskTitle: 'Create your first real monitoring task',

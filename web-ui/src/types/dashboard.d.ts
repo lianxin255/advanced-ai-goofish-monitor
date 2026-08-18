@@ -28,6 +28,17 @@ export interface DashboardTaskSummary {
   latest_crawl_time: string | null
   latest_recommended_title: string | null
   latest_recommended_price: number | null
+  history_avg_price: number | null
+  history_sample_count: number | null
+  history_snapshot_at: string | null
+  history_daily_trend: Array<{
+    day: string
+    sample_count: number
+    avg_price: number | null
+    median_price: number | null
+    min_price: number | null
+    max_price: number | null
+  }>
 }
 
 export interface DashboardActivity {
