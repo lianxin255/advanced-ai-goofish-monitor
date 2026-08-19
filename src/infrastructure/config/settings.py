@@ -117,6 +117,12 @@ class AppSettings(_EnvSettings):
     web_username: str = _env_field("admin", "WEB_USERNAME")
     web_password: str = _env_field("admin123", "WEB_PASSWORD")
     task_log_retention_days: int = _env_field(7, "TASK_LOG_RETENTION_DAYS", ge=1)
+    price_snapshot_retention_days: int = _env_field(
+        30, "PRICE_SNAPSHOT_RETENTION_DAYS", ge=0
+    )
+    result_item_retention_days: int = _env_field(
+        90, "RESULT_ITEM_RETENTION_DAYS", ge=0
+    )
 
     # 文件路径配置
     config_file: str = "config.json"
