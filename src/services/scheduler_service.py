@@ -3,12 +3,17 @@
 负责管理定时任务的调度
 """
 from datetime import datetime
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, JobExecutionEvent
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from typing import List
 
 from src.core.cron_utils import build_cron_trigger
 from src.domain.models.task import Task
 from src.services.process_service import ProcessService
+
+# 触发时间错过多久之内仍然补跑一次；超过这个宽限期就跳过本次触发，等下一个
+# cron 周期，避免任务堆积导致的连环错过。
+DEFAULT_MISFIRE_GRACE_SECONDS = 60
 
 
 class SchedulerService:
@@ -17,6 +22,15 @@ class SchedulerService:
     def __init__(self, process_service: ProcessService):
         self.scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
         self.process_service = process_service
+        self.scheduler.add_listener(
+            self._on_job_event, EVENT_JOB_ERROR | EVENT_JOB_MISSED
+        )
+
+    def _on_job_event(self, event: JobExecutionEvent) -> None:
+        if event.code == EVENT_JOB_MISSED:
+            print(f"[调度器] 任务 '{event.job_id}' 错过了预定触发时间: {event.scheduled_run_time}")
+            return
+        print(f"[调度器] 任务 '{event.job_id}' 执行时抛出异常: {event.exception!r}")
 
     def start(self):
         """启动调度器"""
@@ -67,7 +81,12 @@ class SchedulerService:
                         args=[task.id, task.task_name],
                         id=f"task_{task.id}",
                         name=f"Scheduled: {task.task_name}",
-                        replace_existing=True
+                        replace_existing=True,
+                        # 同一个任务不允许并发跑第二个触发实例；错过超过宽限期就跳过，
+                        # 不要在恢复后一次性把错过的触发全部补跑一遍。
+                        max_instances=1,
+                        coalesce=True,
+                        misfire_grace_time=DEFAULT_MISFIRE_GRACE_SECONDS,
                     )
                     print(f"  -> 已为任务 '{task.task_name}' 添加定时规则: '{task.cron}'")
                 except ValueError as e:
@@ -78,4 +97,11 @@ class SchedulerService:
     async def _run_task(self, task_id: int, task_name: str):
         """执行定时任务"""
         print(f"定时任务触发: 正在为任务 '{task_name}' 启动爬虫...")
-        await self.process_service.start_task(task_id, task_name)
+        try:
+            await self.process_service.start_task(task_id, task_name)
+        except Exception as exc:
+            # APScheduler 会把这里抛出的异常记录进它自己的内部日志（并触发
+            # EVENT_JOB_ERROR），但那部分日志容易被忽略；这里显式打印一份，
+            # 确保失败在应用日志里也能看到。
+            print(f"[调度器] 任务 '{task_name}' (id={task_id}) 启动失败: {exc!r}")
+            raise
