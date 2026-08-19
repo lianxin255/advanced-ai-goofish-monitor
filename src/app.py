@@ -97,6 +97,7 @@ async def lifespan(app: FastAPI):
     print("正在关闭应用...")
     scheduler_service.stop()
     await process_service.stop_all()
+    await task_generation_service.shutdown()
     print("应用已关闭")
 
 

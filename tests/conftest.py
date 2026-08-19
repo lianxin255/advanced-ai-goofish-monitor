@@ -152,4 +152,8 @@ def api_context(tmp_path):
 
 @pytest.fixture()
 def api_client(api_context):
-    return TestClient(api_context["app"])
+    # 必须作为上下文管理器使用，否则 Starlette TestClient 会为每次请求单独开关一个
+    # 事件循环，导致请求处理过程中通过 asyncio.create_task 启动的后台作业（例如
+    # AI 任务生成）在响应返回后就被连带销毁，永远没有机会跑完。
+    with TestClient(api_context["app"]) as client:
+        yield client
