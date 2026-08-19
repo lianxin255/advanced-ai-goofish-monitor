@@ -9,8 +9,11 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from src.infrastructure.logging.logger import get_logger
 from src.infrastructure.persistence.sqlite_bootstrap import bootstrap_sqlite_storage
 from src.infrastructure.persistence.sqlite_connection import sqlite_connection
+
+logger = get_logger(__name__)
 
 
 def _cutoff_iso(keep_days: int, now: datetime | None = None) -> str:
@@ -33,7 +36,7 @@ def cleanup_price_snapshots(*, keep_days: int, now: datetime | None = None) -> i
 
     deleted = int(cursor.rowcount or 0)
     if deleted:
-        print(f"价格快照清理完成：已删除 {deleted} 条超过 {keep_days} 天的历史快照。")
+        logger.info(f"价格快照清理完成：已删除 {deleted} 条超过 {keep_days} 天的历史快照。")
     return deleted
 
 
@@ -53,5 +56,5 @@ def cleanup_result_items(*, keep_days: int, now: datetime | None = None) -> int:
 
     deleted = int(cursor.rowcount or 0)
     if deleted:
-        print(f"历史商品记录清理完成：已删除 {deleted} 条超过 {keep_days} 天的历史记录。")
+        logger.info(f"历史商品记录清理完成：已删除 {deleted} 条超过 {keep_days} 天的历史记录。")
     return deleted

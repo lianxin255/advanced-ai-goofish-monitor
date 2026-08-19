@@ -89,3 +89,40 @@ def test_process_service_adds_debug_limit_arg_when_env_enabled(monkeypatch):
         "--debug-limit",
         "1",
     ]
+
+
+def test_rotate_log_file_moves_oversized_log_to_dot_one(tmp_path, monkeypatch):
+    # _task_log_max_bytes has a 1024-byte floor regardless of the env var, so the
+    # fixture content must exceed that floor to actually trigger rotation.
+    monkeypatch.setenv("TASK_LOG_MAX_BYTES", "10")
+    service = ProcessService()
+    assert service._task_log_max_bytes == 1024
+    content = "x" * 2000
+    log_path = tmp_path / "task-a.log"
+    log_path.write_text(content, encoding="utf-8")
+
+    service._rotate_log_file_if_too_large(str(log_path))
+
+    assert not log_path.exists()
+    rotated = tmp_path / "task-a.log.1"
+    assert rotated.read_text(encoding="utf-8") == content
+
+
+def test_rotate_log_file_leaves_small_log_untouched(tmp_path, monkeypatch):
+    monkeypatch.setenv("TASK_LOG_MAX_BYTES", "1024")
+    service = ProcessService()
+    log_path = tmp_path / "task-a.log"
+    log_path.write_text("small", encoding="utf-8")
+
+    service._rotate_log_file_if_too_large(str(log_path))
+
+    assert log_path.read_text(encoding="utf-8") == "small"
+    assert not (tmp_path / "task-a.log.1").exists()
+
+
+def test_rotate_log_file_is_noop_when_file_missing(tmp_path, monkeypatch):
+    monkeypatch.setenv("TASK_LOG_MAX_BYTES", "10")
+    service = ProcessService()
+    missing_path = tmp_path / "does-not-exist.log"
+
+    service._rotate_log_file_if_too_large(str(missing_path))

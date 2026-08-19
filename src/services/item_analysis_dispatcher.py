@@ -8,7 +8,10 @@ import os
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
 
+from src.infrastructure.logging.logger import get_logger
 from src.keyword_rule_engine import build_search_text, evaluate_keyword_rules
+
+logger = get_logger(__name__)
 
 
 SellerLoader = Callable[[str], Awaitable[dict]]
@@ -84,7 +87,7 @@ class ItemAnalysisDispatcher:
             try:
                 seller_info = await self._seller_loader(job.seller_id)
             except Exception as exc:
-                print(f"   [卖家] 采集卖家 {job.seller_id} 信息失败: {exc}")
+                logger.warning(f"采集卖家 {job.seller_id} 信息失败: {exc}")
         merged = copy.deepcopy(seller_info or {})
         merged["卖家芝麻信用"] = job.zhima_credit_text
         merged["卖家注册时长"] = job.registration_duration_text
@@ -162,7 +165,7 @@ class ItemAnalysisDispatcher:
                 if os.path.exists(img_path):
                     os.remove(img_path)
             except Exception as exc:
-                print(f"   [图片] 删除图片文件时出错: {exc}")
+                logger.warning(f"删除图片文件时出错: {exc}")
 
     async def _notify_if_recommended(self, item_data: dict, analysis_result: dict) -> None:
         if not analysis_result.get("is_recommended"):
@@ -170,4 +173,4 @@ class ItemAnalysisDispatcher:
         try:
             await self._notifier(item_data, analysis_result.get("reason", "无"))
         except Exception as exc:
-            print(f"   [通知] 发送推荐通知失败: {exc}")
+            logger.warning(f"发送推荐通知失败: {exc}")

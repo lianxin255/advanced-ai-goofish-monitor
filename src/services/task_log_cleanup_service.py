@@ -6,6 +6,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from src.infrastructure.logging.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def cleanup_task_logs(
     logs_dir: str = "logs",
@@ -14,7 +18,7 @@ def cleanup_task_logs(
     now: datetime | None = None,
 ) -> list[str]:
     if keep_days < 1:
-        print(f"任务日志清理已跳过：保留天数配置无效 ({keep_days})")
+        logger.info(f"任务日志清理已跳过：保留天数配置无效 ({keep_days})")
         return []
 
     root = Path(logs_dir)
@@ -31,7 +35,7 @@ def cleanup_task_logs(
         try:
             modified_at = datetime.fromtimestamp(path.stat().st_mtime)
         except OSError as exc:
-            print(f"读取任务日志时间失败，已跳过: {path} ({exc})")
+            logger.warning(f"读取任务日志时间失败，已跳过: {path} ({exc})")
             continue
 
         if modified_at >= cutoff:
@@ -41,10 +45,10 @@ def cleanup_task_logs(
             path.unlink()
             removed_files.append(str(path))
         except OSError as exc:
-            print(f"删除历史任务日志失败，已跳过: {path} ({exc})")
+            logger.warning(f"删除历史任务日志失败，已跳过: {path} ({exc})")
 
     if removed_files:
-        print(
+        logger.info(
             f"任务日志清理完成：已删除 {len(removed_files)} 个超过 {keep_days} 天的历史日志文件。"
         )
 

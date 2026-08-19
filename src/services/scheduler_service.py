@@ -9,7 +9,10 @@ from typing import List
 
 from src.core.cron_utils import build_cron_trigger
 from src.domain.models.task import Task
+from src.infrastructure.logging.logger import get_logger
 from src.services.process_service import ProcessService
+
+logger = get_logger(__name__)
 
 # 触发时间错过多久之内仍然补跑一次；超过这个宽限期就跳过本次触发，等下一个
 # cron 周期，避免任务堆积导致的连环错过。
@@ -28,21 +31,21 @@ class SchedulerService:
 
     def _on_job_event(self, event: JobExecutionEvent) -> None:
         if event.code == EVENT_JOB_MISSED:
-            print(f"[调度器] 任务 '{event.job_id}' 错过了预定触发时间: {event.scheduled_run_time}")
+            logger.warning(f"任务 '{event.job_id}' 错过了预定触发时间: {event.scheduled_run_time}")
             return
-        print(f"[调度器] 任务 '{event.job_id}' 执行时抛出异常: {event.exception!r}")
+        logger.error(f"任务 '{event.job_id}' 执行时抛出异常: {event.exception!r}")
 
     def start(self):
         """启动调度器"""
         if not self.scheduler.running:
             self.scheduler.start()
-            print("调度器已启动")
+            logger.info("调度器已启动")
 
     def stop(self):
         """停止调度器"""
         if self.scheduler.running:
             self.scheduler.shutdown()
-            print("调度器已停止")
+            logger.info("调度器已停止")
 
     def get_next_run_time(self, task_id: int):
         job = self.scheduler.get_job(f"task_{task_id}")
@@ -65,7 +68,7 @@ class SchedulerService:
 
     async def reload_jobs(self, tasks: List[Task]):
         """重新加载所有定时任务"""
-        print("正在重新加载定时任务...")
+        logger.info("正在重新加载定时任务...")
         self.scheduler.remove_all_jobs()
 
         for task in tasks:
@@ -88,20 +91,20 @@ class SchedulerService:
                         coalesce=True,
                         misfire_grace_time=DEFAULT_MISFIRE_GRACE_SECONDS,
                     )
-                    print(f"  -> 已为任务 '{task.task_name}' 添加定时规则: '{task.cron}'")
+                    logger.info(f"  -> 已为任务 '{task.task_name}' 添加定时规则: '{task.cron}'")
                 except ValueError as e:
-                    print(f"  -> [警告] 任务 '{task.task_name}' 的 Cron 表达式无效: {e}")
+                    logger.warning(f"  -> [警告] 任务 '{task.task_name}' 的 Cron 表达式无效: {e}")
 
-        print("定时任务加载完成")
+        logger.info("定时任务加载完成")
 
     async def _run_task(self, task_id: int, task_name: str):
         """执行定时任务"""
-        print(f"定时任务触发: 正在为任务 '{task_name}' 启动爬虫...")
+        logger.info(f"定时任务触发: 正在为任务 '{task_name}' 启动爬虫...")
         try:
             await self.process_service.start_task(task_id, task_name)
         except Exception as exc:
             # APScheduler 会把这里抛出的异常记录进它自己的内部日志（并触发
-            # EVENT_JOB_ERROR），但那部分日志容易被忽略；这里显式打印一份，
+            # EVENT_JOB_ERROR），但那部分日志容易被忽略；这里显式记录一份，
             # 确保失败在应用日志里也能看到。
-            print(f"[调度器] 任务 '{task_name}' (id={task_id}) 启动失败: {exc!r}")
+            logger.error(f"任务 '{task_name}' (id={task_id}) 启动失败: {exc!r}")
             raise

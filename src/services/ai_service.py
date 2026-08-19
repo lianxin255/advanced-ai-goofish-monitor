@@ -4,6 +4,9 @@ AI 分析服务
 """
 from typing import Dict, List, Optional
 from src.infrastructure.external.ai_client import AIClient
+from src.infrastructure.logging.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class AIAnalysisService:
@@ -30,7 +33,7 @@ class AIAnalysisService:
             分析结果
         """
         if not self.ai_client.is_available():
-            print("AI 客户端不可用，跳过分析")
+            logger.warning("AI 客户端不可用，跳过分析")
             return None
 
         try:
@@ -39,10 +42,10 @@ class AIAnalysisService:
             if result and self._validate_result(result):
                 return result
             else:
-                print("AI 分析结果验证失败")
+                logger.warning("AI 分析结果验证失败")
                 return None
         except Exception as e:
-            print(f"AI 分析服务出错: {e}")
+            logger.error(f"AI 分析服务出错: {e}")
             return None
 
     def _validate_result(self, result: Dict) -> bool:
@@ -58,21 +61,21 @@ class AIAnalysisService:
         # 检查必需字段
         for field in required_fields:
             if field not in result:
-                print(f"AI 响应缺少必需字段: {field}")
+                logger.warning(f"AI 响应缺少必需字段: {field}")
                 return False
 
         # 检查数据类型
         if not isinstance(result.get("is_recommended"), bool):
-            print("is_recommended 字段不是布尔类型")
+            logger.warning("is_recommended 字段不是布尔类型")
             return False
 
         if not isinstance(result.get("risk_tags"), list):
-            print("risk_tags 字段不是列表类型")
+            logger.warning("risk_tags 字段不是列表类型")
             return False
 
         criteria_analysis = result.get("criteria_analysis", {})
         if not isinstance(criteria_analysis, dict) or not criteria_analysis:
-            print("criteria_analysis 必须是非空字典")
+            logger.warning("criteria_analysis 必须是非空字典")
             return False
 
         return True

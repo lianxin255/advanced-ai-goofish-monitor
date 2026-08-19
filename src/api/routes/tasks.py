@@ -29,6 +29,9 @@ from src.infrastructure.persistence.storage_names import build_result_filename
 from src.services.price_history_service import delete_price_snapshots, rename_price_history
 from src.services.result_storage_service import delete_result_file_records, rename_result_records
 from src.api.routes import websocket
+from src.infrastructure.logging.logger import get_logger
+
+logger = get_logger(__name__)
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 async def _reload_scheduler_if_needed(
@@ -94,7 +97,7 @@ async def generate_task(
     generation_service: TaskGenerationService = Depends(get_task_generation_service),
 ):
     """创建任务。AI模式会生成分析标准，关键词模式直接保存规则。"""
-    print(f"收到任务生成请求: {req.task_name}，模式: {req.decision_mode}")
+    logger.info(f"收到任务生成请求: {req.task_name}，模式: {req.decision_mode}")
 
     try:
         mode = req.decision_mode or "ai"
@@ -126,9 +129,7 @@ async def generate_task(
         raise
     except Exception as e:
         error_msg = f"AI任务生成API发生未知错误: {str(e)}"
-        print(error_msg)
-        import traceback
-        print(traceback.format_exc())
+        logger.error(error_msg, exc_info=True)
         raise HTTPException(status_code=500, detail=error_msg)
 @router.get("/generate-jobs/{job_id}", response_model=dict)
 async def get_task_generation_job(
@@ -171,7 +172,7 @@ async def update_task(
             if not _has_keyword_rules(final_rules):
                 raise HTTPException(status_code=400, detail="关键词模式下至少需要一个关键词。")
         if target_mode == "ai" and (description_changed or switched_to_ai):
-            print(f"检测到任务 {task_id} 需要刷新 AI 标准文件，开始重新生成...")
+            logger.info(f"检测到任务 {task_id} 需要刷新 AI 标准文件，开始重新生成...")
             try:
                 description_for_ai = (
                     task_update.description
@@ -185,29 +186,27 @@ async def update_task(
                     if c.isalnum() or c in "_-"
                 ).rstrip()
                 output_filename = f"prompts/{safe_keyword}_criteria.txt"
-                print(f"目标文件路径: {output_filename}")
-                print("开始调用 AI 生成新的分析标准...")
+                logger.info(f"目标文件路径: {output_filename}")
+                logger.info("开始调用 AI 生成新的分析标准...")
                 generated_criteria = await generate_criteria(
                     user_description=description_for_ai,
                     reference_file_path="prompts/macbook_criteria.txt"
                 )
                 if not generated_criteria or len(generated_criteria.strip()) == 0:
-                    print("AI 返回的内容为空")
+                    logger.warning("AI 返回的内容为空")
                     raise HTTPException(status_code=500, detail="AI 未能生成分析标准，返回内容为空。")
-                print(f"保存新的分析标准到: {output_filename}")
+                logger.info(f"保存新的分析标准到: {output_filename}")
                 os.makedirs("prompts", exist_ok=True)
                 async with aiofiles.open(output_filename, 'w', encoding='utf-8') as f:
                     await f.write(generated_criteria)
-                print(f"新的分析标准已保存")
+                logger.info("新的分析标准已保存")
                 task_update.ai_prompt_criteria_file = output_filename
-                print(f"已更新 ai_prompt_criteria_file 字段为: {output_filename}")
+                logger.info(f"已更新 ai_prompt_criteria_file 字段为: {output_filename}")
             except HTTPException:
                 raise
             except Exception as e:
                 error_msg = f"重新生成 criteria 文件时出错: {str(e)}"
-                print(error_msg)
-                import traceback
-                print(traceback.format_exc())
+                logger.error(error_msg, exc_info=True)
                 raise HTTPException(status_code=500, detail=error_msg)
         old_keyword = existing_task.keyword
         old_task_name = existing_task.task_name
@@ -223,12 +222,12 @@ async def update_task(
                     old_filename, new_filename, task.keyword, task.task_name
                 )
                 if not migrated:
-                    print(
-                        f"[任务更新] 结果迁移被跳过：关键词 '{task.keyword}' 对应的结果文件已被其他任务占用。"
+                    logger.warning(
+                        f"结果迁移被跳过：关键词 '{task.keyword}' 对应的结果文件已被其他任务占用。"
                     )
                 rename_price_history(old_keyword, task.keyword, task.task_name)
             except Exception as e:
-                print(f"迁移任务结果/价格历史时出错: {e}")
+                logger.error(f"迁移任务结果/价格历史时出错: {e}")
 
         await websocket.broadcast_message("tasks_updated", {"task_id": task.id})
         return {"message": "任务更新成功", "task": serialize_task(task, scheduler_service)}
@@ -263,14 +262,14 @@ async def delete_task(
                 await delete_result_file_records(build_result_filename(keyword))
                 delete_price_snapshots(keyword)
     except Exception as e:
-        print(f"删除任务结果文件时出错: {e}")
+        logger.error(f"删除任务结果文件时出错: {e}")
 
     try:
         log_file_path = resolve_task_log_path(task_id, task.task_name)
         if os.path.exists(log_file_path):
             os.remove(log_file_path)
     except Exception as e:
-        print(f"删除任务日志文件时出错: {e}")
+        logger.error(f"删除任务日志文件时出错: {e}")
     await websocket.broadcast_message("tasks_updated", {"task_id": task_id})
     return {"message": "任务删除成功"}
 @router.post("/start/{task_id}", response_model=dict)

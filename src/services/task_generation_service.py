@@ -10,6 +10,9 @@ from uuid import uuid4
 
 from src.domain.models.task import Task
 from src.domain.models.task_generation import TaskGenerationJob, TaskGenerationStep
+from src.infrastructure.logging.logger import get_logger
+
+logger = get_logger(__name__)
 
 DEFAULT_GENERATION_STEPS: tuple[tuple[str, str], ...] = (
     ("prepare", "接收创建请求"),
@@ -81,7 +84,7 @@ class TaskGenerationService:
             try:
                 await coroutine
             except Exception as exc:
-                print(f"任务生成后台作业出现未捕获异常: {exc}")
+                logger.error(f"任务生成后台作业出现未捕获异常: {exc}")
             finally:
                 current = asyncio.current_task()
                 if current is not None:

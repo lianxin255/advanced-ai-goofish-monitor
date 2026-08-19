@@ -47,18 +47,19 @@ async def test_reload_jobs_configures_misfire_and_concurrency_guards():
 
 
 @pytest.mark.asyncio
-async def test_run_task_logs_and_reraises_on_start_failure(capsys):
+async def test_run_task_logs_and_reraises_on_start_failure(caplog):
     process_service = _FakeProcessService(raise_on_start=True)
     service = SchedulerService(process_service)
 
-    with pytest.raises(RuntimeError, match="boom"):
-        await service._run_task(1, "task-1")
+    with caplog.at_level("ERROR"):
+        with pytest.raises(RuntimeError, match="boom"):
+            await service._run_task(1, "task-1")
 
     assert process_service.started == [(1, "task-1")]
-    assert "启动失败" in capsys.readouterr().out
+    assert "启动失败" in caplog.text
 
 
-def test_job_error_listener_logs_exception(capsys):
+def test_job_error_listener_logs_exception(caplog):
     service = SchedulerService(_FakeProcessService())
 
     event = JobExecutionEvent(
@@ -68,14 +69,14 @@ def test_job_error_listener_logs_exception(capsys):
         scheduled_run_time=None,
         exception=RuntimeError("boom"),
     )
-    service._on_job_event(event)
+    with caplog.at_level("ERROR"):
+        service._on_job_event(event)
 
-    out = capsys.readouterr().out
-    assert "task_2" in out
-    assert "boom" in out
+    assert "task_2" in caplog.text
+    assert "boom" in caplog.text
 
 
-def test_job_missed_listener_logs_without_exception(capsys):
+def test_job_missed_listener_logs_without_exception(caplog):
     service = SchedulerService(_FakeProcessService())
 
     event = JobExecutionEvent(
@@ -84,6 +85,7 @@ def test_job_missed_listener_logs_without_exception(capsys):
         jobstore="default",
         scheduled_run_time=None,
     )
-    service._on_job_event(event)
+    with caplog.at_level("WARNING"):
+        service._on_job_event(event)
 
-    assert "task_3" in capsys.readouterr().out
+    assert "task_3" in caplog.text

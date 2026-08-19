@@ -27,17 +27,18 @@ async def test_track_runs_coroutine_on_current_loop_to_completion():
 
 
 @pytest.mark.asyncio
-async def test_track_catches_exceptions_instead_of_crashing(capsys):
+async def test_track_catches_exceptions_instead_of_crashing(caplog):
     service = TaskGenerationService()
 
     async def failing_work():
         raise RuntimeError("boom")
 
-    service.track(failing_work())
-    await _drain_pending()
+    with caplog.at_level("ERROR"):
+        service.track(failing_work())
+        await _drain_pending()
 
     assert service._background_tasks == set()
-    assert "boom" in capsys.readouterr().out
+    assert "boom" in caplog.text
 
 
 @pytest.mark.asyncio

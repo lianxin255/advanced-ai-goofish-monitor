@@ -5,7 +5,9 @@ WebSocket 路由
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import Set
 
+from src.infrastructure.logging.logger import get_logger
 
+logger = get_logger(__name__)
 router = APIRouter()
 
 # 全局 WebSocket 连接管理
@@ -31,7 +33,7 @@ async def websocket_endpoint(
     except WebSocketDisconnect:
         active_connections.remove(websocket)
     except Exception as e:
-        print(f"WebSocket 错误: {e}")
+        logger.warning(f"WebSocket 错误: {e}")
         if websocket in active_connections:
             active_connections.remove(websocket)
 

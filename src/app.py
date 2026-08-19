@@ -35,7 +35,9 @@ from src.services.task_generation_service import TaskGenerationService
 from src.infrastructure.persistence.sqlite_bootstrap import bootstrap_sqlite_storage
 from src.infrastructure.persistence.sqlite_task_repository import SqliteTaskRepository
 from src.infrastructure.config.settings import settings as app_settings
+from src.infrastructure.logging.logger import setup_logging
 
+setup_logging()
 
 # 全局服务实例
 process_service = ProcessService()

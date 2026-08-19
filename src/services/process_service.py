@@ -14,11 +14,15 @@ from typing import Awaitable, Callable, Dict, TextIO
 from src.ai_handler import send_ntfy_notification
 from src.config import STATE_FILE
 from src.failure_guard import FailureGuard
+from src.infrastructure.logging.logger import get_logger
 from src.infrastructure.persistence.sqlite_task_repository import find_task_by_name_sync
 from src.utils import build_task_log_path
 
+logger = get_logger(__name__)
+
 STOP_TIMEOUT_SECONDS = 20
 SPIDER_DEBUG_LIMIT_ENV = "SPIDER_DEBUG_LIMIT"
+DEFAULT_TASK_LOG_MAX_BYTES = 5 * 1024 * 1024
 LifecycleHook = Callable[[int], Awaitable[None] | None]
 
 
@@ -32,6 +36,9 @@ class ProcessService:
         self.task_names: Dict[int, str] = {}
         self.exit_watchers: Dict[int, asyncio.Task] = {}
         self.failure_guard = FailureGuard()
+        self._task_log_max_bytes = max(
+            1024, int(os.getenv("TASK_LOG_MAX_BYTES", "") or DEFAULT_TASK_LOG_MAX_BYTES)
+        )
         self._on_started: LifecycleHook | None = None
         self._on_stopped: LifecycleHook | None = None
 
@@ -80,9 +87,26 @@ class ProcessService:
         self._cleanup_runtime(task_id, process)
         await self._invoke_hook(self._on_stopped, task_id)
 
+    def _rotate_log_file_if_too_large(self, log_file_path: str) -> None:
+        """任务日志是子进程 stdout/stderr 的直接重定向，不经过 Python logging，
+        没法用 RotatingFileHandler；这里退而求其次，在每次任务启动前检查一次
+        大小，超过阈值就把旧内容挪到 .1（覆盖上一份），重新开始追加。"""
+        try:
+            if os.path.getsize(log_file_path) <= self._task_log_max_bytes:
+                return
+        except OSError:
+            return
+
+        rotated_path = f"{log_file_path}.1"
+        try:
+            os.replace(log_file_path, rotated_path)
+        except OSError as exc:
+            logger.warning(f"轮转任务日志文件失败，将继续追加写入: {log_file_path} ({exc})")
+
     def _open_log_file(self, task_id: int, task_name: str) -> tuple[str, TextIO]:
         os.makedirs("logs", exist_ok=True)
         log_file_path = build_task_log_path(task_id, task_name)
+        self._rotate_log_file_if_too_large(log_file_path)
         log_file_handle = open(log_file_path, "a", encoding="utf-8")
         return log_file_path, log_file_handle
 
@@ -134,7 +158,7 @@ class ProcessService:
         """启动任务进程"""
         await self._drain_finished_process(task_id)
         if self.is_running(task_id):
-            print(f"任务 '{task_name}' (ID: {task_id}) 已在运行中")
+            logger.warning(f"任务 '{task_name}' (ID: {task_id}) 已在运行中")
             return False
 
         decision = self.failure_guard.should_skip_start(
@@ -152,16 +176,16 @@ class ProcessService:
             process = await self._spawn_process(task_name, log_file_handle)
         except Exception as exc:
             self._close_log_handle(log_file_handle)
-            print(f"启动任务 '{task_name}' 失败: {exc}")
+            logger.error(f"启动任务 '{task_name}' 失败: {exc}")
             return False
 
         self._register_runtime(task_id, task_name, process, log_file_path, log_file_handle)
-        print(f"启动任务 '{task_name}' (PID: {process.pid})")
+        logger.info(f"启动任务 '{task_name}' (PID: {process.pid})")
         await self._invoke_hook(self._on_started, task_id)
         return True
 
     async def _notify_skip(self, task_name: str, decision) -> None:
-        print(
+        logger.warning(
             f"[FailureGuard] 跳过启动任务 '{task_name}'，已暂停重试 "
             f"(连续失败 {decision.consecutive_failures}/{self.failure_guard.threshold})"
         )
@@ -181,7 +205,7 @@ class ProcessService:
                 "修复方法: 更新登录态/cookies文件后会自动恢复。",
             )
         except Exception as exc:
-            print(f"发送任务暂停通知失败: {exc}")
+            logger.warning(f"发送任务暂停通知失败: {exc}")
 
     async def _watch_process_exit(self, process: asyncio.subprocess.Process) -> None:
         await process.wait()
@@ -224,31 +248,31 @@ class ProcessService:
             with open(log_path, "a", encoding="utf-8") as log_file:
                 log_file.write(f"[{timestamp}] !!! 任务已被终止 !!!\n")
         except Exception as exc:
-            print(f"写入任务终止标记失败: {exc}")
+            logger.warning(f"写入任务终止标记失败: {exc}")
 
     async def stop_task(self, task_id: int) -> bool:
         """停止任务进程"""
         await self._drain_finished_process(task_id)
         process = self.processes.get(task_id)
         if process is None:
-            print(f"任务 ID {task_id} 没有正在运行的进程")
+            logger.warning(f"任务 ID {task_id} 没有正在运行的进程")
             return False
         if process.returncode is not None:
             await self._await_exit_watcher(task_id)
-            print(f"任务进程 {process.pid} (ID: {task_id}) 已退出，略过停止")
+            logger.info(f"任务进程 {process.pid} (ID: {task_id}) 已退出，略过停止")
             return False
 
         try:
             await self._terminate_process(process, task_id)
             self._append_stop_marker(self.log_paths.get(task_id))
             await self._await_exit_watcher(task_id)
-            print(f"任务进程 {process.pid} (ID: {task_id}) 已终止")
+            logger.info(f"任务进程 {process.pid} (ID: {task_id}) 已终止")
             return True
         except ProcessLookupError:
-            print(f"进程 (ID: {task_id}) 已不存在")
+            logger.warning(f"进程 (ID: {task_id}) 已不存在")
             return False
         except Exception as exc:
-            print(f"停止任务进程 (ID: {task_id}) 时出错: {exc}")
+            logger.error(f"停止任务进程 (ID: {task_id}) 时出错: {exc}")
             return False
 
     async def _terminate_process(
@@ -265,7 +289,7 @@ class ProcessService:
             await asyncio.wait_for(process.wait(), timeout=STOP_TIMEOUT_SECONDS)
             return
         except asyncio.TimeoutError:
-            print(
+            logger.warning(
                 f"任务进程 {process.pid} (ID: {task_id}) 未在 "
                 f"{STOP_TIMEOUT_SECONDS} 秒内退出，准备强制终止..."
             )
