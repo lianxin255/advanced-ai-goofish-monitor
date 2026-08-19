@@ -43,7 +43,8 @@ SCHEMA_STATEMENTS = (
         region TEXT,
         decision_mode TEXT NOT NULL,
         keyword_rules_json TEXT NOT NULL,
-        is_running INTEGER NOT NULL
+        is_running INTEGER NOT NULL,
+        blacklist_keywords_json TEXT NOT NULL DEFAULT '[]'
     )
     """,
     """
@@ -88,13 +89,6 @@ SCHEMA_STATEMENTS = (
         publish_time TEXT,
         link TEXT,
         UNIQUE(keyword_slug, run_id, item_id)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS result_blacklist_rules (
-        result_filename TEXT PRIMARY KEY,
-        blacklist_keywords_json TEXT NOT NULL,
-        updated_at TEXT NOT NULL
     )
     """,
     """
@@ -150,6 +144,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     for statement in SCHEMA_STATEMENTS:
         conn.execute(statement)
     _migrate_result_items_status(conn)
+    _migrate_tasks_blacklist_keywords(conn)
     conn.commit()
 
 
@@ -171,6 +166,24 @@ def _migrate_result_items_status(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_results_filename_status_crawl"
         " ON result_items(result_filename, status, crawl_time DESC)"
+    )
+
+
+def _migrate_tasks_blacklist_keywords(conn: sqlite3.Connection) -> None:
+    """为每个任务加入独立黑名单，替换旧的按结果文件事后过滤的黑名单规则（仅执行一次）。"""
+    row = conn.execute(
+        "SELECT value FROM app_metadata WHERE key = 'migration:tasks_blacklist_keywords'"
+    ).fetchone()
+    if row is not None:
+        return
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()]
+    if "blacklist_keywords_json" not in cols:
+        conn.execute(
+            "ALTER TABLE tasks ADD COLUMN blacklist_keywords_json TEXT NOT NULL DEFAULT '[]'"
+        )
+    conn.execute("DROP TABLE IF EXISTS result_blacklist_rules")
+    conn.execute(
+        "INSERT OR REPLACE INTO app_metadata(key, value) VALUES ('migration:tasks_blacklist_keywords', 'done')"
     )
 
 

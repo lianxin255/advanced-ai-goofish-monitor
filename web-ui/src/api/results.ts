@@ -32,18 +32,6 @@ export async function getResultInsights(filename: string): Promise<ResultInsight
   return await http(`/api/results/${filename}/insights`)
 }
 
-export async function getResultBlacklistRules(filename: string): Promise<{ keywords: string[] }> {
-  return await http(`/api/results/${filename}/blacklist-rules`)
-}
-
-export async function updateResultBlacklistRules(filename: string, keywords: string[]): Promise<{ message: string; keywords: string[] }> {
-  return await http(`/api/results/${filename}/blacklist-rules`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ keywords }),
-  })
-}
-
 export function buildResultExportUrl(filename: string, params: GetResultContentParams = {}): string {
   const searchParams = new URLSearchParams()
   Object.entries(params).forEach(([key, value]) => {

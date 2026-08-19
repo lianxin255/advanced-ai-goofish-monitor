@@ -18,7 +18,6 @@ export function useResults() {
   const totalItems = ref(0)
   const page = ref(1)
   const limit = ref(100)
-  const blacklistKeywords = ref<string[]>([])
   const taskNameByKeyword = ref<Record<string, string>>({})
   // Task name recorded on each result file at crawl/save time, keyed by filename.
   // Used as a fallback when the file's keyword can no longer be matched to a
@@ -28,7 +27,6 @@ export function useResults() {
   const isFileOptionsReady = ref(false)
   const hasFetchedFiles = ref(false)
   const hasFetchedTasks = ref(false)
-  const isSavingBlacklist = ref(false)
   const readyDelayMs = 200
   let readyTimer: ReturnType<typeof setTimeout> | null = null
   
@@ -131,21 +129,6 @@ export function useResults() {
     }
   }
 
-  async function fetchBlacklistRules() {
-    if (!selectedFile.value) {
-      blacklistKeywords.value = []
-      return
-    }
-
-    try {
-      const data = await resultsApi.getResultBlacklistRules(selectedFile.value)
-      blacklistKeywords.value = data.keywords || []
-    } catch (e) {
-      if (e instanceof Error) error.value = e
-      blacklistKeywords.value = []
-    }
-  }
-
   async function fetchTaskNameMap() {
     try {
       const tasks = await tasksApi.getAllTasks()
@@ -198,7 +181,6 @@ export function useResults() {
     if (selectedFile.value && selectedFile.value === current) {
       await fetchResults()
       await fetchInsights()
-      await fetchBlacklistRules()
     }
   }
 
@@ -242,23 +224,6 @@ export function useResults() {
     }
   }
 
-  async function saveBlacklistRules(keywords: string[]) {
-    if (!selectedFile.value) return
-    isSavingBlacklist.value = true
-    error.value = null
-    try {
-      const data = await resultsApi.updateResultBlacklistRules(selectedFile.value, keywords)
-      blacklistKeywords.value = data.keywords || []
-      await fetchResults()
-      await fetchInsights()
-    } catch (e) {
-      if (e instanceof Error) error.value = e
-      throw e
-    } finally {
-      isSavingBlacklist.value = false
-    }
-  }
-
   // Watchers
   watch(filters, (val) => {
     localStorage.setItem(STORAGE_KEY_FILTERS, JSON.stringify(val))
@@ -266,7 +231,6 @@ export function useResults() {
   watch([selectedFile, filters], fetchResults, { deep: true })
   watch(selectedFile, () => {
     fetchInsights()
-    fetchBlacklistRules()
   })
   watch(selectedFile, (value) => {
     if (value) localStorage.setItem('lastSelectedResultFile', value)
@@ -319,9 +283,6 @@ export function useResults() {
     exportSelectedResults,
     deleteSelectedFile,
     toggleItemBlock,
-    blacklistKeywords,
-    isSavingBlacklist,
-    saveBlacklistRules,
     fileOptions,
     isFileOptionsReady,
   }

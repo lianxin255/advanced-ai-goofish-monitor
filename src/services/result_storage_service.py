@@ -6,17 +6,13 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import sqlite3
 from datetime import datetime
 
 from src.infrastructure.persistence.sqlite_bootstrap import bootstrap_sqlite_storage
 from src.infrastructure.persistence.sqlite_connection import sqlite_connection
 from src.infrastructure.persistence.storage_names import build_result_filename
 from src.services.price_history_service import parse_price_value
-from src.services.result_blacklist_service import (
-    match_blacklist_keywords,
-    normalize_blacklist_keywords,
-)
+from src.services.result_blacklist_service import normalize_blacklist_keywords
 
 
 SORT_COLUMN_MAP = {
@@ -78,36 +74,14 @@ def _sort_expression(sort_by: str, sort_order: str) -> str:
     return f"(CASE WHEN status = 'active' THEN 0 ELSE 1 END), {column} {direction}, id {direction}"
 
 
-def _load_blacklist_keywords_from_conn(conn, filename: str) -> list[str]:
-    row = conn.execute(
-        """
-        SELECT blacklist_keywords_json
-        FROM result_blacklist_rules
-        WHERE result_filename = ?
-        """,
-        (filename,),
-    ).fetchone()
-    if row is None:
-        return []
-    try:
-        payload = json.loads(row["blacklist_keywords_json"] or "[]")
-    except json.JSONDecodeError:
-        return []
-    return normalize_blacklist_keywords(payload)
-
-
-def _decorate_record_visibility(record: dict, status: str | None, blacklist_keywords: list[str]) -> dict:
-    matched_keywords = match_blacklist_keywords(record, blacklist_keywords)
+def _decorate_record_visibility(record: dict, status: str | None) -> dict:
     hidden_reason = None
     if status == "expired":
         hidden_reason = "expired"
     elif status and status != "active":
         hidden_reason = "manual"
-    elif matched_keywords:
-        hidden_reason = "rule"
 
     record["_status"] = status or "active"
-    record["_matched_blacklist_keywords"] = matched_keywords
     record["_hidden_reason"] = hidden_reason
     record["_effective_hidden"] = hidden_reason is not None
     return record
@@ -142,12 +116,11 @@ def _load_filtered_records_from_conn(
         """,
         tuple(params),
     ).fetchall()
-    blacklist_keywords = _load_blacklist_keywords_from_conn(conn, filename)
 
     records: list[dict] = []
     for row in rows:
         record = _parse_raw_record(str(row["raw_json"]), status=row["status"])
-        decorated = _decorate_record_visibility(record, row["status"], blacklist_keywords)
+        decorated = _decorate_record_visibility(record, row["status"])
         if include_hidden or _is_record_visible(decorated):
             records.append(decorated)
     return records
@@ -456,40 +429,6 @@ def _update_item_status_sync(filename: str, item_id: str, status: str) -> bool:
         return cursor.rowcount > 0
 
 
-async def load_result_blacklist_keywords(filename: str) -> list[str]:
-    return await asyncio.to_thread(_load_result_blacklist_keywords_sync, filename)
-
-
-def _load_result_blacklist_keywords_sync(filename: str) -> list[str]:
-    bootstrap_sqlite_storage()
-    with sqlite_connection() as conn:
-        return _load_blacklist_keywords_from_conn(conn, filename)
-
-
-async def save_result_blacklist_keywords(filename: str, keywords: list[str]) -> list[str]:
-    return await asyncio.to_thread(_save_result_blacklist_keywords_sync, filename, keywords)
-
-
-def _save_result_blacklist_keywords_sync(filename: str, keywords: list[str]) -> list[str]:
-    bootstrap_sqlite_storage()
-    normalized_keywords = normalize_blacklist_keywords(keywords)
-    now = datetime.now().isoformat()
-    with sqlite_connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO result_blacklist_rules (
-                result_filename, blacklist_keywords_json, updated_at
-            ) VALUES (?, ?, ?)
-            ON CONFLICT(result_filename) DO UPDATE SET
-                blacklist_keywords_json = excluded.blacklist_keywords_json,
-                updated_at = excluded.updated_at
-            """,
-            (filename, json.dumps(normalized_keywords, ensure_ascii=False), now),
-        )
-        conn.commit()
-    return normalized_keywords
-
-
 _GLOBAL_BLACKLIST_ROW_ID = 1
 
 
@@ -586,13 +525,6 @@ def _rename_result_records_sync(
             """,
             (new_filename, new_keyword, new_task_name, old_filename),
         )
-        try:
-            conn.execute(
-                "UPDATE result_blacklist_rules SET result_filename = ? WHERE result_filename = ?",
-                (new_filename, old_filename),
-            )
-        except sqlite3.IntegrityError:
-            pass
         conn.commit()
         return True
 

@@ -12,6 +12,7 @@ A Playwright and AI-powered multi-task real-time monitoring tool for Xianyu (闲
 - **SQLite as Primary Storage**: Tasks, results, and price history are persisted in one embedded database instead of repeatedly scanning `jsonl`
 - **Advanced Filtering**: Free shipping, new listing time range, province/city/district filtering
 - **Global Crawl Blacklist**: Items matching a blacklist keyword are ignored during crawling itself (no detail fetch, no save, no notification), across every task
+- **Per-Task Blacklist**: Each task can define its own blacklist keywords; matching items are skipped during that task's crawl
 - **Instant Notifications**: Supports ntfy.sh, WeChat Work (企业微信), Bark, Telegram, Email (SMTP), Webhook
 - **Scheduled Tasks**: Cron expression configuration for periodic tasks
 - **Account & Proxy Rotation**: Multi-account management, task-account binding, proxy pool rotation with failure retry

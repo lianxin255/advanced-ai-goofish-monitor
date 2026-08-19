@@ -121,5 +121,36 @@ def test_generate_request_requires_state_file_for_fixed_account_strategy():
     except ValueError as exc:
         assert "固定账号模式下必须选择账号" in str(exc)
         return
-
     raise AssertionError("固定账号模式应要求 account_state_file")
+
+
+def test_task_normalizes_blacklist_keywords():
+    task = Task(
+        id=1,
+        task_name="Sony A7M4",
+        enabled=True,
+        keyword="sony a7m4",
+        description="body",
+        max_pages=2,
+        personal_only=True,
+        min_price=None,
+        max_price=None,
+        cron=None,
+        ai_prompt_base_file="prompts/base_prompt.txt",
+        ai_prompt_criteria_file="prompts/sony_a7m4_criteria.txt",
+        is_running=False,
+        blacklist_keywords=["Intel\n瑕疵, 二手", "intel", "re: pro\\s?max"],
+    )
+
+    assert task.blacklist_keywords == ["intel", "瑕疵", "二手", "re:pro\\s?max"]
+
+
+def test_generate_request_normalizes_blacklist_keywords():
+    req = TaskGenerateRequest(
+        task_name="Sony A7M4",
+        keyword="sony a7m4",
+        description="只看机身成色和卖家信用。",
+        blacklist_keywords="intel,intel\n瑕疵",
+    )
+
+    assert req.blacklist_keywords == ["intel", "瑕疵"]

@@ -73,7 +73,6 @@ const emit = defineEmits<{
   (e: 'refresh'): void
   (e: 'export'): void
   (e: 'delete'): void
-  (e: 'manage-blacklist'): void
 }>()
 
 function handleToggleAiRecommended(value: boolean) {
@@ -182,14 +181,6 @@ function handleToggleKeywordRecommended(value: boolean) {
       <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:justify-end">
         <Button @click="emit('refresh')" :disabled="props.isLoading">
           {{ t('common.refresh') }}
-        </Button>
-
-        <Button
-          variant="outline"
-          @click="emit('manage-blacklist')"
-          :disabled="props.isLoading || !props.selectedFile"
-        >
-          {{ t('results.filters.manageBlacklist') }}
         </Button>
 
         <Button

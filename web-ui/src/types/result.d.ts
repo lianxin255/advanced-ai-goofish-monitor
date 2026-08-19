@@ -103,6 +103,5 @@ export interface ResultItem {
   price_insight?: PriceInsight;
   _status?: 'active' | 'hidden' | 'expired';
   _effective_hidden?: boolean;
-  _hidden_reason?: 'manual' | 'rule' | 'expired' | null;
-  _matched_blacklist_keywords?: string[];
+  _hidden_reason?: 'manual' | 'expired' | null;
 }

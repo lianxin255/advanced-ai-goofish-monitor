@@ -484,6 +484,9 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
     if decision_mode not in {"ai", "keyword"}:
         decision_mode = "ai"
     keyword_rules = task_config.get("keyword_rules") or []
+    task_blacklist_keywords = task_config.get("blacklist_keywords") or []
+    if task_blacklist_keywords:
+        print(f"LOG: 任务 '{task_config.get('task_name', keyword)}' 已加载独立黑名单，共 {len(task_blacklist_keywords)} 条规则。")
     free_shipping = task_config.get("free_shipping", False)
     raw_new_publish = task_config.get("new_publish_option") or ""
     new_publish_option = raw_new_publish.strip()
@@ -1007,6 +1010,18 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
                                 log_time(
                                     f"[页内进度 {i}/{total_items_on_page}] 商品 '{item_data['商品标题'][:20]}...' "
                                     f"命中全局黑名单关键词 {matched_blacklist_keywords}，已忽略。"
+                                )
+                                continue
+
+                        if task_blacklist_keywords:
+                            matched_task_blacklist_keywords = match_blacklist_keywords(
+                                {"商品信息": item_data, "卖家信息": {}},
+                                task_blacklist_keywords,
+                            )
+                            if matched_task_blacklist_keywords:
+                                log_time(
+                                    f"[页内进度 {i}/{total_items_on_page}] 商品 '{item_data['商品标题'][:20]}...' "
+                                    f"命中任务黑名单关键词 {matched_task_blacklist_keywords}，已忽略。"
                                 )
                                 continue
 

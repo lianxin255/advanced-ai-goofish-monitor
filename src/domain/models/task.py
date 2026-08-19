@@ -13,6 +13,7 @@ from src.services.account_strategy_service import (
     clean_account_state_file,
     normalize_account_strategy,
 )
+from src.services.result_blacklist_service import normalize_blacklist_keywords
 
 
 class TaskStatus(str, Enum):
@@ -129,6 +130,7 @@ class Task(BaseModel):
     region: Optional[str] = None
     decision_mode: Literal["ai", "keyword"] = "ai"
     keyword_rules: List[str] = Field(default_factory=list)
+    blacklist_keywords: List[str] = Field(default_factory=list)
     is_running: bool = False
 
     @model_validator(mode="before")
@@ -140,6 +142,11 @@ class Task(BaseModel):
     @classmethod
     def normalize_keyword_rules(cls, value):
         return _normalize_keyword_values(value)
+
+    @field_validator("blacklist_keywords", mode="before")
+    @classmethod
+    def normalize_blacklist_keywords_field(cls, value):
+        return normalize_blacklist_keywords(value)
 
     def can_start(self) -> bool:
         """检查任务是否可以启动"""
@@ -179,6 +186,7 @@ class TaskCreate(BaseModel):
     region: Optional[str] = None
     decision_mode: Literal["ai", "keyword"] = "ai"
     keyword_rules: List[str] = Field(default_factory=list)
+    blacklist_keywords: List[str] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -209,6 +217,11 @@ class TaskCreate(BaseModel):
     @classmethod
     def normalize_keyword_rules(cls, value):
         return _normalize_keyword_values(value)
+
+    @field_validator("blacklist_keywords", mode="before")
+    @classmethod
+    def normalize_blacklist_keywords_field(cls, value):
+        return normalize_blacklist_keywords(value)
 
     @model_validator(mode="after")
     def validate_decision_mode_payload(self):
@@ -246,6 +259,7 @@ class TaskUpdate(BaseModel):
     region: Optional[str] = None
     decision_mode: Optional[Literal["ai", "keyword"]] = None
     keyword_rules: Optional[List[str]] = None
+    blacklist_keywords: Optional[List[str]] = None
     is_running: Optional[bool] = None
 
     @model_validator(mode="before")
@@ -277,6 +291,11 @@ class TaskUpdate(BaseModel):
     @classmethod
     def normalize_keyword_rules(cls, value):
         return _normalize_keyword_values(value)
+
+    @field_validator("blacklist_keywords", mode="before")
+    @classmethod
+    def normalize_blacklist_keywords_field(cls, value):
+        return normalize_blacklist_keywords(value)
 
     @model_validator(mode="after")
     def validate_partial_keyword_payload(self):
@@ -310,6 +329,7 @@ class TaskGenerateRequest(BaseModel):
     region: Optional[str] = None
     decision_mode: Literal["ai", "keyword"] = "ai"
     keyword_rules: List[str] = Field(default_factory=list)
+    blacklist_keywords: List[str] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -345,6 +365,11 @@ class TaskGenerateRequest(BaseModel):
     @classmethod
     def normalize_keyword_rules(cls, value):
         return _normalize_keyword_values(value)
+
+    @field_validator("blacklist_keywords", mode="before")
+    @classmethod
+    def normalize_blacklist_keywords_field(cls, value):
+        return normalize_blacklist_keywords(value)
 
     @model_validator(mode="after")
     def validate_decision_mode_payload(self):
