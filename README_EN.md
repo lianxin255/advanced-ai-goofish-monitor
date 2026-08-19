@@ -13,7 +13,7 @@ A Playwright and AI-powered multi-task real-time monitoring tool for Xianyu (闲
 - **Advanced Filtering**: Free shipping, new listing time range, province/city/district filtering
 - **Global Crawl Blacklist**: Items matching a blacklist keyword are ignored during crawling itself (no detail fetch, no save, no notification), across every task
 - **Per-Task Blacklist**: Each task can define its own blacklist keywords; matching items are skipped during that task's crawl
-- **Instant Notifications**: Supports ntfy.sh, WeChat Work (企业微信), Bark, Telegram, Email (SMTP), Webhook
+- **Instant Notifications**: Supports ntfy.sh, WeChat Work (企业微信), Bark, Telegram, Email (SMTP), Webhook, each channel can be toggled on/off independently
 - **Scheduled Tasks**: Cron expression configuration for periodic tasks
 - **Account & Proxy Rotation**: Multi-account management, task-account binding, proxy pool rotation with failure retry
 - **Docker Deployment**: One-click containerized deployment
@@ -125,6 +125,7 @@ docker compose down
 ### Results and Logs
 
 - The results page and export endpoints now query SQLite instead of directly scanning `jsonl` files.
+- Sort by crawl time, publish time, price (ascending/descending), or keyword-hit count, plus a "Smart" sort that puts AI-recommended items first and orders the rest by price ascending.
 - The logs page is the first place to inspect login-state expiry, anti-bot issues, or AI call failures.
 
 ### System Settings
@@ -194,6 +195,7 @@ cd web-ui && npm run build
 
 ### Notifications
 
+- Each channel has its own `*_ENABLED` flag (e.g. `NTFY_ENABLED`, `BARK_ENABLED`, `EMAIL_ENABLED`), defaulting to `true`; toggle it via these env vars or directly in the Web UI's Settings → Notifications panel.
 - `NTFY_TOPIC_URL`
 - `GOTIFY_URL` / `GOTIFY_TOKEN`
 - `BARK_URL`
@@ -272,6 +274,13 @@ It means the repository root `dist/` directory is missing. Run `./start.sh`, or 
 ### Why does `./start.sh` complain about missing Playwright or a browser?
 
 The script performs a prerequisite check before installing project dependencies. Install the Playwright CLI and Chromium first, then make sure Chrome, Edge, or Chromium is available on the system and rerun `./start.sh`.
+
+### AI analysis fails with `Error code: 429 - rate_limit_error`, what should I do?
+
+This means your AI provider's rate limit was hit. The app automatically backs off with jittered exponential delay (5s/10s/20s, capped at 60s) and retries, so brief bursts usually resolve on their own. If it happens constantly:
+
+- Lower `ai_analysis_concurrency` for the task (or the `AI_ANALYSIS_CONCURRENCY` env var, default `2`) to reduce concurrent requests.
+- Upgrade your Token Plan or switch to pay-as-you-go billing, as suggested by the provider's error message.
 
 </details>
 

@@ -13,7 +13,7 @@
 - **高级筛选**: 包邮、新发布时间范围、省/市/区三级区域筛选
 - **全局爬取黑名单**: 命中黑名单关键词的商品在爬取阶段直接忽略（不获取详情、不保存、不通知），对所有任务生效
 - **任务独立黑名单**: 每个任务可单独配置黑名单关键词，命中规则的商品在该任务爬取阶段即被跳过
-- **即时通知**: 支持 ntfy.sh、企业微信、Bark、Telegram、邮件(SMTP)、Webhook等多渠道
+- **即时通知**: 支持 ntfy.sh、企业微信、Bark、Telegram、邮件(SMTP)、Webhook等多渠道，每个渠道可单独开关
 - **定时调度**: 支持 Cron 配置周期性任务
 - **账号与代理轮换**: 多账号管理、任务绑定账号、代理池轮换与失败重试
 - **Docker 部署**: 一键容器化部署
@@ -114,6 +114,7 @@ docker compose up -d
 ### 结果查看与运行日志
 
 - 结果页和导出功能现在从 SQLite 查询，不再直接扫描 `jsonl` 文件。
+- 支持按爬取时间、发布时间、价格（升/降序）、关键词命中数排序，以及“智能排序”（AI 推荐商品优先，其余按价格从低到高）。
 - 日志页按任务展示运行过程，便于排查登录态失效、风控和 AI 调用问题。
 
 ### 系统设置
@@ -207,6 +208,7 @@ cd web-ui && npm run build
 
 ### 通知
 
+- 每个渠道都有独立的 `*_ENABLED` 开关（如 `NTFY_ENABLED`、`BARK_ENABLED`、`EMAIL_ENABLED`），默认 `true`；也可以在 Web UI 的“系统设置 -> 通知设置”页面直接勾选/取消。
 - `NTFY_TOPIC_URL`
 - `GOTIFY_URL` / `GOTIFY_TOKEN`
 - `BARK_URL`
@@ -285,6 +287,13 @@ AI 模式会先生成分析标准，再创建任务。现在该流程已改为�
 ### `./start.sh` 为什么提示缺少 Playwright 或浏览器？
 
 这是脚本的前置检查。请先安装 Playwright CLI 与 Chromium，并确保系统中可用 Chrome / Edge（Linux 环境也可用 Chromium），然后重新执行 `./start.sh`。
+
+### AI 分析报错 `Error code: 429 - rate_limit_error` 怎么办？
+
+说明 AI 服务商/中转站的速率限制已被触发。程序会自动按指数退避（5s/10s/20s，最长 60s）等待后重试，短暂的突发限流通常无需人工干预。如果持续大量出现：
+
+- 降低该任务的 `ai_analysis_concurrency`（或环境变量 `AI_ANALYSIS_CONCURRENCY`，默认 `2`），减少并发请求数。
+- 按服务商提示升级 Token Plan 套餐，或切换为按量付费 API。
 
 </details>
 
