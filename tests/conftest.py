@@ -96,10 +96,19 @@ class FakeSchedulerService:
 
 
 @pytest.fixture()
-def api_context(tmp_path):
+def api_context(tmp_path, monkeypatch):
     config_file = tmp_path / "config.json"
     config_file.write_text("[]", encoding="utf-8")
     db_path = tmp_path / "app.sqlite3"
+
+    # SqliteTaskRepository(db_path=...) below only isolates the task table itself.
+    # tasks.py's route handlers also reach into result_storage_service /
+    # price_history_service on delete (delete_result_file_records,
+    # delete_price_snapshots), and those always resolve the database path via
+    # APP_DATABASE_FILE / the default "data/app.sqlite3" — without this env
+    # override they would silently read/write the developer's real local
+    # database instead of this test's temp one.
+    monkeypatch.setenv("APP_DATABASE_FILE", str(db_path))
 
     repository = SqliteTaskRepository(
         db_path=str(db_path),

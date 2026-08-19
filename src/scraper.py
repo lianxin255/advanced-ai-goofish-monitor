@@ -46,10 +46,17 @@ from src.rotation import RotationPool, load_state_files, parse_proxy_pool, Rotat
 from src.failure_guard import FailureGuard
 from src.services.account_strategy_service import resolve_account_runtime_plan
 from src.infrastructure.persistence.storage_names import build_result_filename
+from src.services.ai_cost_control_service import (
+    GlobalAIConcurrencyGate,
+    build_ai_cache_key,
+    load_cached_ai_result,
+    store_ai_result_cache,
+)
 from src.services.item_analysis_dispatcher import (
     ItemAnalysisDispatcher,
     ItemAnalysisJob,
 )
+from src.services.notification_dedup_service import should_skip_duplicate_notification
 from src.services.price_history_service import (
     build_market_reference,
     load_price_snapshots,
@@ -256,6 +263,45 @@ def _get_seller_profile_cache_ttl(task_config: dict) -> int:
     configured = task_config.get("seller_profile_cache_ttl")
     default = _as_int(os.getenv("SELLER_PROFILE_CACHE_TTL"), 1800)
     return max(0, _as_int(configured, default))
+
+
+def _get_cross_task_notification_dedup_hours() -> int:
+    return max(0, _as_int(os.getenv("CROSS_TASK_NOTIFICATION_DEDUP_HOURS"), 24))
+
+
+def _get_ai_result_cache_ttl_hours() -> int:
+    return max(0, _as_int(os.getenv("AI_RESULT_CACHE_TTL_HOURS"), 24))
+
+
+def _get_global_ai_concurrency_limit() -> int:
+    # 默认 0 = 不限制，跨进程信号量是可选功能，需要用户按自己的 API 配额显式开启。
+    return max(0, _as_int(os.getenv("GLOBAL_AI_CONCURRENCY_LIMIT"), 0))
+
+
+async def _cross_task_deduped_notifier(item_data: dict, reason: str):
+    """在推送前查一次跨任务去重表，避免同一商品被不同任务在短时间内重复推送。"""
+    dedup_hours = _get_cross_task_notification_dedup_hours()
+    if should_skip_duplicate_notification(item_data, window_hours=dedup_hours):
+        item_label = item_data.get("商品ID") or item_data.get("商品链接") or "未知商品"
+        print(f"   [去重] 商品 {item_label} 近期已被其他任务通知过，跳过本次推送。")
+        return {}
+    return await send_ntfy_notification(item_data, reason)
+
+
+async def _governed_ai_analysis(record: dict, image_paths: list, prompt_text: str) -> Optional[dict]:
+    """AI 分析的成本控制包装：命中跨任务缓存直接复用；否则在可选的全局并发闸门下调用。"""
+    cache_key = build_ai_cache_key(record, prompt_text)
+    cached = load_cached_ai_result(cache_key, ttl_hours=_get_ai_result_cache_ttl_hours())
+    if cached is not None:
+        print("   [AI分析] 命中跨任务缓存，跳过重复调用。")
+        return cached
+
+    gate = GlobalAIConcurrencyGate(limit=_get_global_ai_concurrency_limit())
+    async with gate:
+        result = await get_ai_analysis(record, image_paths, prompt_text)
+    if result:
+        store_ai_result_cache(cache_key, result)
+    return result
 
 
 def _default_context_options() -> dict:
@@ -643,8 +689,8 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
                     lambda seller_key: scrape_user_profile(context, seller_key),
                 ),
                 image_downloader=download_all_images,
-                ai_analyzer=get_ai_analysis,
-                notifier=send_ntfy_notification,
+                ai_analyzer=_governed_ai_analysis,
+                notifier=_cross_task_deduped_notifier,
                 saver=save_to_jsonl,
             )
 
