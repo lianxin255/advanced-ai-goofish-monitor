@@ -82,6 +82,47 @@ def test_results_filter_and_sort_for_keyword_recommendations(tmp_path, monkeypat
     assert resp.status_code == 400
 
 
+def test_results_smart_sort_prioritizes_recommended_then_price(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    jsonl_dir = tmp_path / "jsonl"
+    jsonl_dir.mkdir(parents=True, exist_ok=True)
+    target_file = jsonl_dir / "demo_smart_sort.jsonl"
+
+    records = [
+        {
+            "爬取时间": "2026-01-01T01:00:00",
+            "商品信息": {"当前售价": "¥500", "发布时间": "2026-01-01 10:00"},
+            "ai_analysis": {"analysis_source": "ai", "is_recommended": False, "reason": "不推荐"},
+        },
+        {
+            "爬取时间": "2026-01-01T02:00:00",
+            "商品信息": {"当前售价": "¥3000", "发布时间": "2026-01-01 11:00"},
+            "ai_analysis": {"analysis_source": "ai", "is_recommended": True, "reason": "AI推荐"},
+        },
+        {
+            "爬取时间": "2026-01-01T03:00:00",
+            "商品信息": {"当前售价": "¥1000", "发布时间": "2026-01-01 12:00"},
+            "ai_analysis": {"analysis_source": "ai", "is_recommended": True, "reason": "AI推荐"},
+        },
+    ]
+    _write_jsonl(target_file, records)
+
+    app = FastAPI()
+    app.include_router(results.router)
+    client = TestClient(app)
+
+    resp = client.get(
+        "/api/results/demo_smart_sort.jsonl",
+        params={"sort_by": "smart"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    prices = [item["商品信息"]["当前售价"] for item in data["items"]]
+    recommended = [item["ai_analysis"]["is_recommended"] for item in data["items"]]
+    assert recommended == [True, True, False]
+    assert prices == ["¥1000", "¥3000", "¥500"]
+
+
 def test_results_insights_and_export_csv(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     jsonl_dir = tmp_path / "jsonl"

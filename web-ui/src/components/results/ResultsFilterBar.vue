@@ -25,7 +25,7 @@ interface Props {
   aiRecommendedOnly: boolean
   keywordRecommendedOnly: boolean
   includeHidden: boolean
-  sortBy: 'crawl_time' | 'publish_time' | 'price' | 'keyword_hit_count'
+  sortBy: 'crawl_time' | 'publish_time' | 'price' | 'keyword_hit_count' | 'smart'
   sortOrder: 'asc' | 'desc'
   isLoading: boolean
   isReady: boolean
@@ -68,7 +68,7 @@ const emit = defineEmits<{
   (e: 'update:aiRecommendedOnly', value: boolean): void
   (e: 'update:keywordRecommendedOnly', value: boolean): void
   (e: 'update:includeHidden', value: boolean): void
-  (e: 'update:sortBy', value: 'crawl_time' | 'publish_time' | 'price' | 'keyword_hit_count'): void
+  (e: 'update:sortBy', value: 'crawl_time' | 'publish_time' | 'price' | 'keyword_hit_count' | 'smart'): void
   (e: 'update:sortOrder', value: 'asc' | 'desc'): void
   (e: 'refresh'): void
   (e: 'export'): void
@@ -114,7 +114,7 @@ function handleToggleKeywordRecommended(value: boolean) {
       </div>
 
       <div class="space-y-2">
-        <Label class="text-xs font-semibold text-slate-500">{{ t('results.filters.sortByCrawlTime') }}</Label>
+        <Label class="text-xs font-semibold text-slate-500">{{ t('results.filters.sortByLabel') }}</Label>
         <Select
           :model-value="props.sortBy"
           @update:model-value="(value) => emit('update:sortBy', value as any)"
@@ -127,11 +127,12 @@ function handleToggleKeywordRecommended(value: boolean) {
             <SelectItem value="publish_time">{{ t('results.filters.sortByPublishTime') }}</SelectItem>
             <SelectItem value="price">{{ t('results.filters.sortByPrice') }}</SelectItem>
             <SelectItem value="keyword_hit_count">{{ t('results.filters.sortByKeywordHits') }}</SelectItem>
+            <SelectItem value="smart">{{ t('results.filters.sortBySmart') }}</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
-      <div class="space-y-2">
+      <div class="space-y-2" v-if="props.sortBy !== 'smart'">
         <Label class="text-xs font-semibold text-slate-500">{{ t('results.filters.asc') }} / {{ t('results.filters.desc') }}</Label>
         <Select
           :model-value="props.sortOrder"

@@ -68,6 +68,11 @@ def _build_query_conditions(
 
 
 def _sort_expression(sort_by: str, sort_order: str) -> str:
+    if sort_by == "smart":
+        return (
+            "(CASE WHEN status = 'active' THEN 0 ELSE 1 END), "
+            "is_recommended DESC, COALESCE(price, 0) ASC, id ASC"
+        )
     column = SORT_COLUMN_MAP.get(sort_by, SORT_COLUMN_MAP["crawl_time"])
     direction = "ASC" if sort_order == "asc" else "DESC"
     return f"(CASE WHEN status = 'active' THEN 0 ELSE 1 END), {column} {direction}, id {direction}"
