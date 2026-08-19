@@ -49,7 +49,7 @@ from src.services.ai_request_compat import (
     is_temperature_unsupported_error,
     remove_temperature_param,
 )
-from src.services.notification_service import build_notification_service
+from src.services.notification_service import NotificationService, build_notification_service
 from src.utils import convert_goofish_link, retry_on_failure
 
 
@@ -282,9 +282,12 @@ def validate_ai_response_format(parsed_response):
     return True
 
 
-@retry_on_failure(retries=3, delay=5)
-async def send_ntfy_notification(product_data, reason):
-    """兼容旧调用名，内部统一走 NotificationService。"""
+async def send_ntfy_notification(product_data, reason, retries=3, delay=5):
+    """兼容旧调用名，内部统一走 NotificationService。
+
+    NotificationService 内部会捕获每个渠道自己的异常并转换为结果字典（不会向外抛异常），
+    因此重试只能在这一层针对"发送失败的渠道"显式重试，已经成功的渠道不会被重复发送。
+    """
     service = build_notification_service()
     if not service.clients:
         safe_print(
@@ -292,13 +295,31 @@ async def send_ntfy_notification(product_data, reason):
         )
         return {}
 
-    results = await service.send_notification(product_data, reason)
-    for channel, result in results.items():
+    pending_clients = list(service.clients)
+    final_results: dict = {}
+
+    for attempt in range(retries):
+        attempt_results = await NotificationService(pending_clients).send_notification(product_data, reason)
+        final_results.update(attempt_results)
+
+        pending_clients = [
+            client for client in pending_clients
+            if not final_results[client.channel_key]["success"]
+        ]
+        if not pending_clients:
+            break
+        if attempt < retries - 1:
+            safe_print(
+                f"   -> {len(pending_clients)} 个通知渠道发送失败，将在 {delay} 秒后重试（第 {attempt + 1}/{retries} 次）..."
+            )
+            await asyncio.sleep(delay)
+
+    for channel, result in final_results.items():
         if result["success"]:
             safe_print(f"   -> {channel} 通知发送成功。")
             continue
         safe_print(f"   -> {channel} 通知发送失败: {result['message']}")
-    return results
+    return final_results
 
 
 async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
