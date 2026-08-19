@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
@@ -67,24 +68,31 @@ def _str_to_dt(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
-def _get_mtime(path: Optional[str]) -> Optional[float]:
+def _get_content_hash(path: Optional[str]) -> Optional[str]:
+    """按文件内容计算哈希，而不是用 mtime 判断 cookie 是否更新。
+
+    mtime 在文件被"原子替换成内容相同的副本"时也会跟着变化，反过来
+    某些保留时间戳的复制/同步工具（如 rsync -a、cp -p）在内容真正变化时
+    也可能不更新 mtime，导致自动恢复逻辑永远等不到"文件已更新"的信号。
+    """
     if not path:
         return None
     try:
-        return os.path.getmtime(path)
+        with open(path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
     except OSError:
         return None
 
 
 def _cookie_changed(
-    cookie_path: Optional[str], previous_mtime: Optional[float]
+    cookie_path: Optional[str], previous_hash: Optional[str]
 ) -> bool:
     if not cookie_path:
         return False
-    current = _get_mtime(cookie_path)
-    if current is None or previous_mtime is None:
+    current = _get_content_hash(cookie_path)
+    if current is None or previous_hash is None:
         return False
-    return current > (previous_mtime + 1e-6)
+    return current != previous_hash
 
 
 class _FileLock:
@@ -228,7 +236,7 @@ class FailureGuard:
                 "last_failure_at": None,
                 "last_success_at": _dt_to_str(current),
                 "cookie_path": None,
-                "cookie_mtime": None,
+                "cookie_hash": None,
             }
 
         self._update_task(task_key, _reset)
@@ -253,18 +261,13 @@ class FailureGuard:
         last_reason = (entry.get("last_failure_reason") or "").strip() or "未知错误"
         last_notified_date = entry.get("last_notified_date")
 
-        previous_cookie_mtime = entry.get("cookie_mtime")
-        if cookie_path and previous_cookie_mtime is not None:
-            try:
-                previous_cookie_mtime = float(previous_cookie_mtime)
-            except (TypeError, ValueError):
-                previous_cookie_mtime = None
+        previous_cookie_hash = entry.get("cookie_hash")
 
         if (
             paused_until
             and paused_until > current
             and cookie_path
-            and _cookie_changed(cookie_path, previous_cookie_mtime)
+            and _cookie_changed(cookie_path, previous_cookie_hash)
         ):
             # cookies / 登录态更新 => 自动恢复
             self.record_success(task_key, now=current)
@@ -315,7 +318,7 @@ class FailureGuard:
     ) -> dict:
         current = _now(self.tz_name, now=now)
         today = _today_str(self.tz_name, now=current)
-        cookie_mtime = _get_mtime(cookie_path)
+        cookie_hash = _get_content_hash(cookie_path)
 
         effective_threshold = max(1, int(min_failures_to_pause or self.threshold))
 
@@ -331,13 +334,9 @@ class FailureGuard:
             previous_paused_until = _str_to_dt(entry.get("paused_until"))
             was_paused = bool(previous_paused_until and current < previous_paused_until)
 
-            prev_mtime = entry.get("cookie_mtime")
-            try:
-                prev_mtime = float(prev_mtime) if prev_mtime is not None else None
-            except (TypeError, ValueError):
-                prev_mtime = None
+            prev_hash = entry.get("cookie_hash")
 
-            if cookie_path and _cookie_changed(cookie_path, prev_mtime):
+            if cookie_path and _cookie_changed(cookie_path, prev_hash):
                 entry["consecutive_failures"] = 0
                 entry["paused_until"] = None
                 entry["last_notified_date"] = None
@@ -348,8 +347,8 @@ class FailureGuard:
             entry["last_failure_at"] = _dt_to_str(current)
             if cookie_path:
                 entry["cookie_path"] = cookie_path
-                if cookie_mtime is not None:
-                    entry["cookie_mtime"] = cookie_mtime
+                if cookie_hash is not None:
+                    entry["cookie_hash"] = cookie_hash
 
             opened = False
             if consecutive >= effective_threshold:

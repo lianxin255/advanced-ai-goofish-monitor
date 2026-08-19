@@ -116,14 +116,22 @@ def _format_failure_reason(reason: str, limit: int = 500) -> str:
 
 
 async def _notify_task_failure(
-    task_config: dict, reason: str, *, cookie_path: Optional[str]
+    task_config: dict,
+    reason: str,
+    *,
+    cookie_path: Optional[str],
+    immediate_pause: bool = False,
 ) -> None:
     task_name = task_config.get("task_name", "未命名任务")
     keyword = task_config.get("keyword", "")
     formatted_reason = _format_failure_reason(reason)
 
-    # Some failures are deterministic misconfiguration and should pause/notify immediately.
-    pause_immediately = any(
+    # Some failures are deterministic misconfiguration/risk-control and should
+    # pause/notify immediately rather than waiting for the failure threshold:
+    # a bare 3-60s sleep before the next cron trigger isn't a real cooldown,
+    # and retrying risk control or an expired login without human
+    # intervention just re-triggers it.
+    pause_immediately = immediate_pause or any(
         marker in formatted_reason
         for marker in (
             "未找到可用的代理地址",
@@ -1239,6 +1247,7 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
         1,
     )
     last_error = ""
+    last_error_immediate_pause = False
     last_state_path: Optional[str] = None
 
     # If this task is already in a paused state, skip immediately.
@@ -1323,15 +1332,18 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
             last_error = ""
         except LoginRequiredError as e:
             last_error = str(e)
+            last_error_immediate_pause = True
             print(f"检测到登录失效/重定向: {e}")
             break
         except RiskControlError as e:
             last_error = str(e)
+            last_error_immediate_pause = True
             print(f"检测到风控或验证触发: {e}")
             # 风控验证通常不是简单轮换能解决的，避免无意义重试。
             break
         except Exception as e:
             last_error = f"{type(e).__name__}: {e}"
+            last_error_immediate_pause = False
             print(f"本次尝试失败: {last_error}")
             if attempt < attempt_limit:
                 print("将尝试轮换账号/IP 后重试...")
@@ -1344,7 +1356,12 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
         break
 
     if last_error:
-        await _notify_task_failure(task_config, last_error, cookie_path=last_state_path)
+        await _notify_task_failure(
+            task_config,
+            last_error,
+            cookie_path=last_state_path,
+            immediate_pause=last_error_immediate_pause,
+        )
 
     # 清理任务图片目录
     cleanup_task_images(task_config.get("task_name", "default"))
