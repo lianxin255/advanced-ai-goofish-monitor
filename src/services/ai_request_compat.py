@@ -165,6 +165,34 @@ def create_ai_response_sync(
     raise ValueError(f"不支持的 AI API 模式: {api_mode}")
 
 
+def is_rate_limit_error(error: Exception) -> bool:
+    """识别触发限流(HTTP 429)的错误，包括中转网关自定义的限流错误体。"""
+    status_code = getattr(error, "status_code", None)
+    if status_code == 429:
+        return True
+    message = str(error).lower()
+    return "429" in message or "rate_limit" in message or "rate limit" in message
+
+
+def get_retry_after_seconds(error: Exception) -> float | None:
+    """尝试从限流错误的响应头中提取服务端建议的重试等待秒数，取不到则返回 None。"""
+    response = getattr(error, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is None or not hasattr(headers, "get"):
+        return None
+    for key in ("retry-after", "Retry-After", "x-ratelimit-reset"):
+        value = headers.get(key)
+        if value is None:
+            continue
+        try:
+            seconds = float(value)
+        except (TypeError, ValueError):
+            continue
+        if seconds >= 0:
+            return seconds
+    return None
+
+
 def is_temperature_unsupported_error(error: Exception) -> bool:
     """识别模型或中转站不支持 temperature 参数的错误。"""
     message = str(error).lower()

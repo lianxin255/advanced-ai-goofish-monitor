@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import os
+import random
 import re
 import sys
 import shutil
@@ -40,8 +41,10 @@ from src.services.ai_request_compat import (
     RESPONSES_API_MODE,
     build_ai_request_params,
     create_ai_response_async,
+    get_retry_after_seconds,
     is_chat_completions_api_unsupported_error,
     is_json_output_unsupported_error,
+    is_rate_limit_error,
     is_responses_api_unsupported_error,
     is_temperature_unsupported_error,
     remove_temperature_param,
@@ -61,6 +64,9 @@ DEFAULT_IMAGE_DOWNLOAD_CONCURRENCY = max(
     1,
     _positive_int(os.getenv("IMAGE_DOWNLOAD_CONCURRENCY", "3"), 3),
 )
+
+RATE_LIMIT_BASE_DELAY_SECONDS = 5
+RATE_LIMIT_MAX_DELAY_SECONDS = 60
 
 
 def safe_print(text):
@@ -473,7 +479,21 @@ async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
                 safe_print("-------------------------------------\n")
             safe_print(f"   [AI分析] 第{attempt + 1}次尝试AI调用失败: {e}")
             if attempt < max_retries - 1:
-                safe_print(f"   [AI分析] 准备第{attempt + 2}次重试...")
+                if is_rate_limit_error(e):
+                    wait_seconds = get_retry_after_seconds(e)
+                    if wait_seconds is None:
+                        wait_seconds = min(
+                            RATE_LIMIT_MAX_DELAY_SECONDS,
+                            RATE_LIMIT_BASE_DELAY_SECONDS * (2 ** attempt),
+                        )
+                    # 加入少量抖动，避免多个并发商品在同一时刻集中重试导致再次触发限流。
+                    wait_seconds += random.uniform(0, wait_seconds * 0.2)
+                    safe_print(
+                        f"   [AI分析] 已触发速率限制(429)，将在 {wait_seconds:.0f} 秒后进行第{attempt + 2}次重试..."
+                    )
+                    await asyncio.sleep(wait_seconds)
+                else:
+                    safe_print(f"   [AI分析] 准备第{attempt + 2}次重试...")
                 continue
             else:
                 raise e
