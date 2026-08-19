@@ -4,6 +4,8 @@
 """
 import os
 import re
+import tempfile
+import threading
 from typing import Dict, List, Optional
 from pathlib import Path
 
@@ -18,6 +20,7 @@ class EnvManager:
 
     def __init__(self, env_file: str = ".env"):
         self.env_file = Path(env_file)
+        self._lock = threading.Lock()
         self._ensure_env_file_exists()
 
     def _ensure_env_file_exists(self):
@@ -59,15 +62,16 @@ class EnvManager:
         deletions: List[str] | None = None,
     ) -> bool:
         """批量更新并删除环境变量"""
-        try:
-            existing_vars = self.read_env()
-            existing_vars.update(updates)
-            for key in deletions or []:
-                existing_vars.pop(key, None)
-            return self._write_env(existing_vars)
-        except Exception as e:
-            print(f"更新环境变量失败: {e}")
-            return False
+        with self._lock:
+            try:
+                existing_vars = self.read_env()
+                existing_vars.update(updates)
+                for key in deletions or []:
+                    existing_vars.pop(key, None)
+                return self._write_env(existing_vars)
+            except Exception as e:
+                print(f"更新环境变量失败: {e}")
+                return False
 
     def set_value(self, key: str, value: str) -> bool:
         """设置单个环境变量"""
@@ -75,24 +79,34 @@ class EnvManager:
 
     def delete_keys(self, keys: List[str]) -> bool:
         """删除指定的环境变量"""
-        try:
-            existing_vars = self.read_env()
-            for key in keys:
-                existing_vars.pop(key, None)
-            return self._write_env(existing_vars)
-        except Exception as e:
-            print(f"删除环境变量失败: {e}")
-            return False
+        with self._lock:
+            try:
+                existing_vars = self.read_env()
+                for key in keys:
+                    existing_vars.pop(key, None)
+                return self._write_env(existing_vars)
+            except Exception as e:
+                print(f"删除环境变量失败: {e}")
+                return False
 
     def _write_env(self, env_vars: Dict[str, str]) -> bool:
-        """写入环境变量到文件"""
+        """将环境变量原子性地写入文件：先写临时文件，再用 os.replace 整体替换，
+        避免写入过程中崩溃导致 .env 被截断/丢失。调用方需持有 self._lock。"""
+        directory = self.env_file.parent if str(self.env_file.parent) else Path(".")
+        directory.mkdir(parents=True, exist_ok=True)
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            prefix=f".{self.env_file.name}.", suffix=".tmp", dir=str(directory)
+        )
         try:
-            with open(self.env_file, 'w', encoding='utf-8') as f:
+            with os.fdopen(tmp_fd, 'w', encoding='utf-8') as f:
                 for key, value in env_vars.items():
                     f.write(f"{key}={self._serialize_value(value)}\n")
+            os.replace(tmp_path, self.env_file)
             return True
         except Exception as e:
             print(f"写入 .env 文件失败: {e}")
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
             return False
 
     def _serialize_value(self, value: str) -> str:
