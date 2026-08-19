@@ -2,19 +2,25 @@ import { http } from '@/lib/http'
 
 export interface NotificationSettings {
   NTFY_TOPIC_URL?: string
+  NTFY_ENABLED?: boolean
   GOTIFY_URL?: string
   GOTIFY_TOKEN?: string
+  GOTIFY_ENABLED?: boolean
   BARK_URL?: string
+  BARK_ENABLED?: boolean
   WX_BOT_URL?: string
+  WX_BOT_ENABLED?: boolean
   TELEGRAM_BOT_TOKEN?: string
   TELEGRAM_CHAT_ID?: string
   TELEGRAM_API_BASE_URL?: string
+  TELEGRAM_ENABLED?: boolean
   WEBHOOK_URL?: string
   WEBHOOK_METHOD?: string
   WEBHOOK_HEADERS?: string
   WEBHOOK_CONTENT_TYPE?: string
   WEBHOOK_QUERY_PARAMETERS?: string
   WEBHOOK_BODY?: string
+  WEBHOOK_ENABLED?: boolean
   SMTP_HOST?: string
   SMTP_PORT?: number
   SMTP_USERNAME?: string
@@ -22,6 +28,7 @@ export interface NotificationSettings {
   SMTP_FROM_ADDRESS?: string
   SMTP_TO_ADDRESS?: string
   SMTP_USE_SSL?: boolean
+  EMAIL_ENABLED?: boolean
   PCURL_TO_MOBILE?: boolean
   BARK_URL_SET?: boolean
   GOTIFY_TOKEN_SET?: boolean
@@ -35,19 +42,25 @@ export interface NotificationSettings {
 
 export interface NotificationSettingsUpdate {
   NTFY_TOPIC_URL?: string | null
+  NTFY_ENABLED?: boolean
   GOTIFY_URL?: string | null
   GOTIFY_TOKEN?: string | null
+  GOTIFY_ENABLED?: boolean
   BARK_URL?: string | null
+  BARK_ENABLED?: boolean
   WX_BOT_URL?: string | null
+  WX_BOT_ENABLED?: boolean
   TELEGRAM_BOT_TOKEN?: string | null
   TELEGRAM_CHAT_ID?: string | null
   TELEGRAM_API_BASE_URL?: string | null
+  TELEGRAM_ENABLED?: boolean
   WEBHOOK_URL?: string | null
   WEBHOOK_METHOD?: string | null
   WEBHOOK_HEADERS?: string | null
   WEBHOOK_CONTENT_TYPE?: string | null
   WEBHOOK_QUERY_PARAMETERS?: string | null
   WEBHOOK_BODY?: string | null
+  WEBHOOK_ENABLED?: boolean
   SMTP_HOST?: string | null
   SMTP_PORT?: number | null
   SMTP_USERNAME?: string | null
@@ -55,6 +68,7 @@ export interface NotificationSettingsUpdate {
   SMTP_FROM_ADDRESS?: string | null
   SMTP_TO_ADDRESS?: string | null
   SMTP_USE_SSL?: boolean
+  EMAIL_ENABLED?: boolean
   PCURL_TO_MOBILE?: boolean
 }
 

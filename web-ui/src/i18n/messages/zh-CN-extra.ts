@@ -227,6 +227,10 @@ const zhCNExtra = {
     secretPlaceholder: '已配置则留空保留，输入新值覆盖',
     secretKeepPlaceholder: '已配置则留空保留',
     notConfigured: '尚未配置。',
+    enableChannel: '启用此渠道',
+    testSuccessTitle: '{channel} 测试成功',
+    testFailedTitle: '{channel} 测试失败',
+    testNoResult: '未返回任何测试结果',
     ntfy: {
       description: '适合轻量推送，URL 非敏感，可直接回显和修改。',
     },

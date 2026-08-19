@@ -15,8 +15,8 @@ class WeComBotClient(NotificationClient):
     channel_key = "wecom"
     display_name = "企业微信"
 
-    def __init__(self, bot_url: str | None = None, pcurl_to_mobile: bool = True):
-        super().__init__(enabled=bool(bot_url), pcurl_to_mobile=pcurl_to_mobile)
+    def __init__(self, bot_url: str | None = None, pcurl_to_mobile: bool = True, channel_enabled: bool = True):
+        super().__init__(enabled=bool(bot_url) and channel_enabled, pcurl_to_mobile=pcurl_to_mobile)
         self.bot_url = bot_url
 
     async def send(self, product_data: Dict, reason: str) -> None:

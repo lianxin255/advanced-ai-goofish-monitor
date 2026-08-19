@@ -20,6 +20,11 @@ export function useResults() {
   const limit = ref(100)
   const blacklistKeywords = ref<string[]>([])
   const taskNameByKeyword = ref<Record<string, string>>({})
+  // Task name recorded on each result file at crawl/save time, keyed by filename.
+  // Used as a fallback when the file's keyword can no longer be matched to a
+  // current task (e.g. the task was renamed or deleted), so historical result
+  // files don't permanently fall back to "unnamed".
+  const fileTaskNames = ref<Record<string, string>>({})
   const isFileOptionsReady = ref(false)
   const hasFetchedFiles = ref(false)
   const hasFetchedTasks = ref(false)
@@ -62,8 +67,9 @@ export function useResults() {
   // Methods
   async function fetchFiles() {
     try {
-      const fileList = await resultsApi.getResultFiles()
+      const { files: fileList, taskNames } = await resultsApi.getResultFiles()
       files.value = fileList
+      fileTaskNames.value = taskNames
       // If a file is selected that no longer exists, reset it.
       // Otherwise, if nothing is selected, select the first file by default.
       if (selectedFile.value && fileList.includes(selectedFile.value)) {
@@ -279,7 +285,10 @@ export function useResults() {
   const fileOptions = computed(() =>
     files.value.map((file) => {
       const keyword = getKeywordFromFilename(file)
-      const taskName = taskNameByKeyword.value[keyword]
+      // Prefer the live task list (reflects the task's current name), and fall
+      // back to the name recorded on the result file itself when no current
+      // task matches (renamed/deleted task, or a keyword-normalization mismatch).
+      const taskName = taskNameByKeyword.value[keyword] || fileTaskNames.value[file]
       return {
         value: file,
         taskName: taskName || t('common.unnamed'),

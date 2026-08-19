@@ -13,8 +13,8 @@ class BarkClient(NotificationClient):
     channel_key = "bark"
     display_name = "Bark"
 
-    def __init__(self, bark_url: str = None, pcurl_to_mobile: bool = True):
-        super().__init__(enabled=bool(bark_url), pcurl_to_mobile=pcurl_to_mobile)
+    def __init__(self, bark_url: str = None, pcurl_to_mobile: bool = True, channel_enabled: bool = True):
+        super().__init__(enabled=bool(bark_url) and channel_enabled, pcurl_to_mobile=pcurl_to_mobile)
         self.bark_url = bark_url
 
     async def send(self, product_data: Dict, reason: str) -> None:

@@ -13,8 +13,8 @@ class NtfyClient(NotificationClient):
     channel_key = "ntfy"
     display_name = "Ntfy"
 
-    def __init__(self, topic_url: str = None, pcurl_to_mobile: bool = True):
-        super().__init__(enabled=bool(topic_url), pcurl_to_mobile=pcurl_to_mobile)
+    def __init__(self, topic_url: str = None, pcurl_to_mobile: bool = True, channel_enabled: bool = True):
+        super().__init__(enabled=bool(topic_url) and channel_enabled, pcurl_to_mobile=pcurl_to_mobile)
         self.topic_url = topic_url
 
     async def send(self, product_data: Dict, reason: str) -> None:

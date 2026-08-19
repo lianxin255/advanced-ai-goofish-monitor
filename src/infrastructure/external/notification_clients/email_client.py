@@ -29,12 +29,13 @@ class EmailClient(NotificationClient):
         to_address: str = None,
         use_ssl: bool = True,
         pcurl_to_mobile: bool = True,
+        channel_enabled: bool = True,
     ):
         to_addresses = [
             addr.strip() for addr in (to_address or "").split(",") if addr.strip()
         ]
         super().__init__(
-            enabled=bool(host and username and password and to_addresses),
+            enabled=bool(host and username and password and to_addresses) and channel_enabled,
             pcurl_to_mobile=pcurl_to_mobile,
         )
         self.host = host

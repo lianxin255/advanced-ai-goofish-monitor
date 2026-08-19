@@ -1,5 +1,3 @@
-import type { ResultInsights } from '@/types/result.d.ts'
-
 export interface DashboardSummary {
   enabled_tasks: number
   running_tasks: number
@@ -58,17 +56,4 @@ export interface DashboardSnapshot {
   task_summaries: DashboardTaskSummary[]
   recent_activities: DashboardActivity[]
   focus_file: string | null
-}
-
-export interface DashboardSuggestion {
-  title: string
-  description: string
-  actionLabel: string
-  routeName: 'Tasks' | 'Settings'
-  query: Record<string, string>
-}
-
-export interface DashboardState {
-  snapshot: DashboardSnapshot | null
-  focusInsights: ResultInsights | null
 }

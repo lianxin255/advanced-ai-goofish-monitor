@@ -58,22 +58,28 @@ class AISettings(_EnvSettings):
 class NotificationSettings(_EnvSettings):
     """通知服务配置"""
     ntfy_topic_url: Optional[str] = _env_field(None, "NTFY_TOPIC_URL")
+    ntfy_enabled: bool = _env_field(True, "NTFY_ENABLED")
     gotify_url: Optional[str] = _env_field(None, "GOTIFY_URL")
     gotify_token: Optional[str] = _env_field(None, "GOTIFY_TOKEN")
+    gotify_enabled: bool = _env_field(True, "GOTIFY_ENABLED")
     bark_url: Optional[str] = _env_field(None, "BARK_URL")
+    bark_enabled: bool = _env_field(True, "BARK_ENABLED")
     wx_bot_url: Optional[str] = _env_field(None, "WX_BOT_URL")
+    wx_bot_enabled: bool = _env_field(True, "WX_BOT_ENABLED")
     telegram_bot_token: Optional[str] = _env_field(None, "TELEGRAM_BOT_TOKEN")
     telegram_chat_id: Optional[str] = _env_field(None, "TELEGRAM_CHAT_ID")
     telegram_api_base_url: Optional[str] = _env_field(
         DEFAULT_TELEGRAM_API_BASE_URL,
         "TELEGRAM_API_BASE_URL",
     )
+    telegram_enabled: bool = _env_field(True, "TELEGRAM_ENABLED")
     webhook_url: Optional[str] = _env_field(None, "WEBHOOK_URL")
     webhook_method: str = _env_field("POST", "WEBHOOK_METHOD")
     webhook_headers: Optional[str] = _env_field(None, "WEBHOOK_HEADERS")
     webhook_content_type: str = _env_field("JSON", "WEBHOOK_CONTENT_TYPE")
     webhook_query_parameters: Optional[str] = _env_field(None, "WEBHOOK_QUERY_PARAMETERS")
     webhook_body: Optional[str] = _env_field(None, "WEBHOOK_BODY")
+    webhook_enabled: bool = _env_field(True, "WEBHOOK_ENABLED")
     smtp_host: Optional[str] = _env_field(None, "SMTP_HOST")
     smtp_port: int = _env_field(DEFAULT_SMTP_PORT, "SMTP_PORT")
     smtp_username: Optional[str] = _env_field(None, "SMTP_USERNAME")
@@ -81,18 +87,19 @@ class NotificationSettings(_EnvSettings):
     smtp_from_address: Optional[str] = _env_field(None, "SMTP_FROM_ADDRESS")
     smtp_to_address: Optional[str] = _env_field(None, "SMTP_TO_ADDRESS")
     smtp_use_ssl: bool = _env_field(True, "SMTP_USE_SSL")
+    email_enabled: bool = _env_field(True, "EMAIL_ENABLED")
     pcurl_to_mobile: bool = _env_field(True, "PCURL_TO_MOBILE")
 
     def has_any_notification_enabled(self) -> bool:
         """检查是否配置了任何通知服务"""
         return any([
-            self.ntfy_topic_url,
-            self.wx_bot_url,
-            self.gotify_url and self.gotify_token,
-            self.bark_url,
-            self.telegram_bot_token and self.telegram_chat_id,
-            self.webhook_url,
-            self.smtp_host and self.smtp_username and self.smtp_password and self.smtp_to_address,
+            self.ntfy_topic_url and self.ntfy_enabled,
+            self.wx_bot_url and self.wx_bot_enabled,
+            self.gotify_url and self.gotify_token and self.gotify_enabled,
+            self.bark_url and self.bark_enabled,
+            self.telegram_bot_token and self.telegram_chat_id and self.telegram_enabled,
+            self.webhook_url and self.webhook_enabled,
+            self.smtp_host and self.smtp_username and self.smtp_password and self.smtp_to_address and self.email_enabled,
         ])
 
 

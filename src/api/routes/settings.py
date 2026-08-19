@@ -78,19 +78,25 @@ class NotificationSettingsModel(BaseModel):
     """通知设置模型"""
 
     NTFY_TOPIC_URL: Optional[str] = None
+    NTFY_ENABLED: Optional[bool] = None
     GOTIFY_URL: Optional[str] = None
     GOTIFY_TOKEN: Optional[str] = None
+    GOTIFY_ENABLED: Optional[bool] = None
     BARK_URL: Optional[str] = None
+    BARK_ENABLED: Optional[bool] = None
     WX_BOT_URL: Optional[str] = None
+    WX_BOT_ENABLED: Optional[bool] = None
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None
     TELEGRAM_API_BASE_URL: Optional[str] = None
+    TELEGRAM_ENABLED: Optional[bool] = None
     WEBHOOK_URL: Optional[str] = None
     WEBHOOK_METHOD: Optional[str] = None
     WEBHOOK_HEADERS: Optional[str] = None
     WEBHOOK_CONTENT_TYPE: Optional[str] = None
     WEBHOOK_QUERY_PARAMETERS: Optional[str] = None
     WEBHOOK_BODY: Optional[str] = None
+    WEBHOOK_ENABLED: Optional[bool] = None
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: Optional[int] = None
     SMTP_USERNAME: Optional[str] = None
@@ -98,6 +104,7 @@ class NotificationSettingsModel(BaseModel):
     SMTP_FROM_ADDRESS: Optional[str] = None
     SMTP_TO_ADDRESS: Optional[str] = None
     SMTP_USE_SSL: Optional[bool] = None
+    EMAIL_ENABLED: Optional[bool] = None
     PCURL_TO_MOBILE: Optional[bool] = None
 
 

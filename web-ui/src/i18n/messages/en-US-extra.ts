@@ -227,6 +227,10 @@ const enUSExtra = {
     secretPlaceholder: 'Leave blank to keep the current value, or enter a new value to overwrite it',
     secretKeepPlaceholder: 'Leave blank to keep the current value',
     notConfigured: 'Not configured yet.',
+    enableChannel: 'Enable this channel',
+    testSuccessTitle: '{channel} test succeeded',
+    testFailedTitle: '{channel} test failed',
+    testNoResult: 'No test result was returned',
     ntfy: {
       description: 'Best for lightweight delivery. The topic URL is not sensitive and can be displayed directly.',
     },

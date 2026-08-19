@@ -23,8 +23,9 @@ class TelegramClient(NotificationClient):
         chat_id: str = None,
         api_base_url: str = DEFAULT_TELEGRAM_API_BASE_URL,
         pcurl_to_mobile: bool = True,
+        channel_enabled: bool = True,
     ):
-        super().__init__(enabled=bool(bot_token and chat_id), pcurl_to_mobile=pcurl_to_mobile)
+        super().__init__(enabled=bool(bot_token and chat_id) and channel_enabled, pcurl_to_mobile=pcurl_to_mobile)
         self.bot_token = bot_token
         self.chat_id = chat_id
         self.api_base_url = (

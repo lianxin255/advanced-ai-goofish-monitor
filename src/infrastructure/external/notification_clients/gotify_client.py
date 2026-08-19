@@ -20,9 +20,10 @@ class GotifyClient(NotificationClient):
         gotify_url: str | None = None,
         gotify_token: str | None = None,
         pcurl_to_mobile: bool = True,
+        channel_enabled: bool = True,
     ):
         super().__init__(
-            enabled=bool(gotify_url and gotify_token),
+            enabled=bool(gotify_url and gotify_token) and channel_enabled,
             pcurl_to_mobile=pcurl_to_mobile,
         )
         self.gotify_url = (gotify_url or "").rstrip("/")

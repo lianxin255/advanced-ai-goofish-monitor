@@ -225,6 +225,36 @@ def _list_result_filenames_sync() -> list[str]:
     return [str(row["result_filename"]) for row in rows]
 
 
+async def list_result_files_with_task_names() -> list[dict]:
+    return await asyncio.to_thread(_list_result_files_with_task_names_sync)
+
+
+def _list_result_files_with_task_names_sync() -> list[dict]:
+    """结果文件列表及各自最新一条记录携带的任务名。
+
+    task_name 直接来自存储时写入的 result_items.task_name 列，不依赖当前任务表的
+    keyword 反查匹配，因此任务被改名/删除后，历史结果文件仍能显示其原本的任务名，
+    而不是回退成"未命名"。
+    """
+    bootstrap_sqlite_storage()
+    with sqlite_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT result_filename, task_name, MAX(crawl_time) AS latest_crawl_time
+            FROM result_items
+            GROUP BY result_filename
+            ORDER BY latest_crawl_time DESC, result_filename DESC
+            """
+        ).fetchall()
+    return [
+        {
+            "filename": str(row["result_filename"]),
+            "task_name": str(row["task_name"] or ""),
+        }
+        for row in rows
+    ]
+
+
 async def result_file_exists(filename: str) -> bool:
     return await asyncio.to_thread(_result_file_exists_sync, filename)
 

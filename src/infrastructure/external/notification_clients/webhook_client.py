@@ -26,8 +26,9 @@ class WebhookClient(NotificationClient):
         webhook_query_parameters: str | None = None,
         webhook_body: str | None = None,
         pcurl_to_mobile: bool = True,
+        channel_enabled: bool = True,
     ):
-        super().__init__(enabled=bool(webhook_url), pcurl_to_mobile=pcurl_to_mobile)
+        super().__init__(enabled=bool(webhook_url) and channel_enabled, pcurl_to_mobile=pcurl_to_mobile)
         self.webhook_url = webhook_url
         self.webhook_method = (webhook_method or "POST").upper()
         self.webhook_headers = webhook_headers

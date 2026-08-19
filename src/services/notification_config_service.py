@@ -14,19 +14,25 @@ from src.infrastructure.config.settings import (
 
 NOTIFICATION_FIELD_MAP = {
     "NTFY_TOPIC_URL": "ntfy_topic_url",
+    "NTFY_ENABLED": "ntfy_enabled",
     "GOTIFY_URL": "gotify_url",
     "GOTIFY_TOKEN": "gotify_token",
+    "GOTIFY_ENABLED": "gotify_enabled",
     "BARK_URL": "bark_url",
+    "BARK_ENABLED": "bark_enabled",
     "WX_BOT_URL": "wx_bot_url",
+    "WX_BOT_ENABLED": "wx_bot_enabled",
     "TELEGRAM_BOT_TOKEN": "telegram_bot_token",
     "TELEGRAM_CHAT_ID": "telegram_chat_id",
     "TELEGRAM_API_BASE_URL": "telegram_api_base_url",
+    "TELEGRAM_ENABLED": "telegram_enabled",
     "WEBHOOK_URL": "webhook_url",
     "WEBHOOK_METHOD": "webhook_method",
     "WEBHOOK_HEADERS": "webhook_headers",
     "WEBHOOK_CONTENT_TYPE": "webhook_content_type",
     "WEBHOOK_QUERY_PARAMETERS": "webhook_query_parameters",
     "WEBHOOK_BODY": "webhook_body",
+    "WEBHOOK_ENABLED": "webhook_enabled",
     "SMTP_HOST": "smtp_host",
     "SMTP_PORT": "smtp_port",
     "SMTP_USERNAME": "smtp_username",
@@ -34,18 +40,20 @@ NOTIFICATION_FIELD_MAP = {
     "SMTP_FROM_ADDRESS": "smtp_from_address",
     "SMTP_TO_ADDRESS": "smtp_to_address",
     "SMTP_USE_SSL": "smtp_use_ssl",
+    "EMAIL_ENABLED": "email_enabled",
     "PCURL_TO_MOBILE": "pcurl_to_mobile",
 }
 
 CHANNEL_NOTIFICATION_FIELDS = {
-    "ntfy": {"NTFY_TOPIC_URL"},
-    "bark": {"BARK_URL"},
-    "gotify": {"GOTIFY_URL", "GOTIFY_TOKEN"},
-    "wecom": {"WX_BOT_URL"},
+    "ntfy": {"NTFY_TOPIC_URL", "NTFY_ENABLED"},
+    "bark": {"BARK_URL", "BARK_ENABLED"},
+    "gotify": {"GOTIFY_URL", "GOTIFY_TOKEN", "GOTIFY_ENABLED"},
+    "wecom": {"WX_BOT_URL", "WX_BOT_ENABLED"},
     "telegram": {
         "TELEGRAM_BOT_TOKEN",
         "TELEGRAM_CHAT_ID",
         "TELEGRAM_API_BASE_URL",
+        "TELEGRAM_ENABLED",
     },
     "webhook": {
         "WEBHOOK_URL",
@@ -54,6 +62,7 @@ CHANNEL_NOTIFICATION_FIELDS = {
         "WEBHOOK_CONTENT_TYPE",
         "WEBHOOK_QUERY_PARAMETERS",
         "WEBHOOK_BODY",
+        "WEBHOOK_ENABLED",
     },
     "email": {
         "SMTP_HOST",
@@ -63,6 +72,7 @@ CHANNEL_NOTIFICATION_FIELDS = {
         "SMTP_FROM_ADDRESS",
         "SMTP_TO_ADDRESS",
         "SMTP_USE_SSL",
+        "EMAIL_ENABLED",
     },
 }
 
@@ -76,8 +86,28 @@ SECRET_NOTIFICATION_FIELDS = {
     "SMTP_PASSWORD",
 }
 
+ENABLED_ATTR_NAMES = {
+    "ntfy_enabled",
+    "gotify_enabled",
+    "bark_enabled",
+    "wx_bot_enabled",
+    "telegram_enabled",
+    "webhook_enabled",
+    "email_enabled",
+}
+
 INT_NOTIFICATION_FIELDS = {"SMTP_PORT"}
-BOOL_NOTIFICATION_FIELDS = {"PCURL_TO_MOBILE", "SMTP_USE_SSL"}
+BOOL_NOTIFICATION_FIELDS = {
+    "PCURL_TO_MOBILE",
+    "SMTP_USE_SSL",
+    "NTFY_ENABLED",
+    "GOTIFY_ENABLED",
+    "BARK_ENABLED",
+    "WX_BOT_ENABLED",
+    "TELEGRAM_ENABLED",
+    "WEBHOOK_ENABLED",
+    "EMAIL_ENABLED",
+}
 
 JSON_NOTIFICATION_FIELDS = {
     "WEBHOOK_HEADERS": True,
@@ -97,6 +127,15 @@ URL_FIELDS = {
 ALLOWED_WEBHOOK_METHODS = {"GET", "POST"}
 ALLOWED_WEBHOOK_CONTENT_TYPES = {"JSON", "FORM"}
 
+URL_FIELD_ENABLED_ATTR = {
+    "NTFY_TOPIC_URL": "ntfy_enabled",
+    "GOTIFY_URL": "gotify_enabled",
+    "BARK_URL": "bark_enabled",
+    "WX_BOT_URL": "wx_bot_enabled",
+    "TELEGRAM_API_BASE_URL": "telegram_enabled",
+    "WEBHOOK_URL": "webhook_enabled",
+}
+
 
 class NotificationSettingsValidationError(ValueError):
     """通知配置校验错误"""
@@ -114,22 +153,28 @@ def build_notification_settings_response(
     notification_settings = settings or load_notification_settings()
     response = {
         "NTFY_TOPIC_URL": notification_settings.ntfy_topic_url or "",
+        "NTFY_ENABLED": notification_settings.ntfy_enabled,
         "GOTIFY_URL": notification_settings.gotify_url or "",
         "GOTIFY_TOKEN": "",
+        "GOTIFY_ENABLED": notification_settings.gotify_enabled,
         "BARK_URL": "",
+        "BARK_ENABLED": notification_settings.bark_enabled,
         "WX_BOT_URL": "",
+        "WX_BOT_ENABLED": notification_settings.wx_bot_enabled,
         "TELEGRAM_BOT_TOKEN": "",
         "TELEGRAM_CHAT_ID": notification_settings.telegram_chat_id or "",
         "TELEGRAM_API_BASE_URL": (
             notification_settings.telegram_api_base_url
             or DEFAULT_TELEGRAM_API_BASE_URL
         ),
+        "TELEGRAM_ENABLED": notification_settings.telegram_enabled,
         "WEBHOOK_URL": "",
         "WEBHOOK_METHOD": notification_settings.webhook_method,
         "WEBHOOK_HEADERS": "",
         "WEBHOOK_CONTENT_TYPE": notification_settings.webhook_content_type,
         "WEBHOOK_QUERY_PARAMETERS": notification_settings.webhook_query_parameters or "",
         "WEBHOOK_BODY": notification_settings.webhook_body or "",
+        "WEBHOOK_ENABLED": notification_settings.webhook_enabled,
         "SMTP_HOST": notification_settings.smtp_host or "",
         "SMTP_PORT": notification_settings.smtp_port or DEFAULT_SMTP_PORT,
         "SMTP_USERNAME": notification_settings.smtp_username or "",
@@ -137,6 +182,7 @@ def build_notification_settings_response(
         "SMTP_FROM_ADDRESS": notification_settings.smtp_from_address or "",
         "SMTP_TO_ADDRESS": notification_settings.smtp_to_address or "",
         "SMTP_USE_SSL": notification_settings.smtp_use_ssl,
+        "EMAIL_ENABLED": notification_settings.email_enabled,
         "PCURL_TO_MOBILE": notification_settings.pcurl_to_mobile,
     }
     for field in SECRET_NOTIFICATION_FIELDS:
@@ -172,23 +218,32 @@ def build_configured_channels(
 ) -> list[str]:
     notification_settings = settings or load_notification_settings()
     channels = []
-    if notification_settings.ntfy_topic_url:
+    if notification_settings.ntfy_topic_url and notification_settings.ntfy_enabled:
         channels.append("ntfy")
-    if notification_settings.bark_url:
+    if notification_settings.bark_url and notification_settings.bark_enabled:
         channels.append("bark")
-    if notification_settings.gotify_url and notification_settings.gotify_token:
+    if (
+        notification_settings.gotify_url
+        and notification_settings.gotify_token
+        and notification_settings.gotify_enabled
+    ):
         channels.append("gotify")
-    if notification_settings.wx_bot_url:
+    if notification_settings.wx_bot_url and notification_settings.wx_bot_enabled:
         channels.append("wecom")
-    if notification_settings.telegram_bot_token and notification_settings.telegram_chat_id:
+    if (
+        notification_settings.telegram_bot_token
+        and notification_settings.telegram_chat_id
+        and notification_settings.telegram_enabled
+    ):
         channels.append("telegram")
-    if notification_settings.webhook_url:
+    if notification_settings.webhook_url and notification_settings.webhook_enabled:
         channels.append("webhook")
     if (
         notification_settings.smtp_host
         and notification_settings.smtp_username
         and notification_settings.smtp_password
         and notification_settings.smtp_to_address
+        and notification_settings.email_enabled
     ):
         channels.append("email")
     return channels
@@ -239,7 +294,7 @@ def prepare_notification_test_settings(
             patch_payload,
             existing_settings,
         )
-        return merged_settings
+        return _force_all_enabled(merged_settings)
 
     if channel not in CHANNEL_NOTIFICATION_FIELDS:
         raise NotificationSettingsValidationError(f"不支持的通知渠道: {channel}")
@@ -258,7 +313,15 @@ def prepare_notification_test_settings(
     normalized_values = _normalize_notification_values(merged_values)
     candidate_settings = _build_notification_settings_model(normalized_values)
     _validate_notification_settings(candidate_settings)
-    return candidate_settings
+    return _force_all_enabled(candidate_settings)
+
+
+def _force_all_enabled(settings: NotificationSettings) -> NotificationSettings:
+    """测试通知时忽略渠道开关状态，只要凭据配置正确即可测试。"""
+    values = _notification_settings_to_values(settings)
+    for attr_name in ENABLED_ATTR_NAMES:
+        values[attr_name] = True
+    return _build_notification_settings_model(values)
 
 
 def _notification_settings_to_values(settings: NotificationSettings) -> dict:
@@ -282,6 +345,13 @@ def _build_channel_test_values(
     values["smtp_port"] = DEFAULT_SMTP_PORT
     values["smtp_use_ssl"] = True
     values["pcurl_to_mobile"] = True
+    values["ntfy_enabled"] = True
+    values["gotify_enabled"] = True
+    values["bark_enabled"] = True
+    values["wx_bot_enabled"] = True
+    values["telegram_enabled"] = True
+    values["webhook_enabled"] = True
+    values["email_enabled"] = True
 
     for env_name in included_env_fields:
         attr_name = NOTIFICATION_FIELD_MAP[env_name]
@@ -294,22 +364,28 @@ def load_notification_settings() -> NotificationSettings:
     return _build_notification_settings_model(
         {
             "ntfy_topic_url": _normalize_existing_text(env_manager.get_value("NTFY_TOPIC_URL")),
+            "ntfy_enabled": _env_bool(env_manager.get_value("NTFY_ENABLED"), True),
             "gotify_url": _normalize_existing_text(env_manager.get_value("GOTIFY_URL")),
             "gotify_token": _normalize_existing_text(env_manager.get_value("GOTIFY_TOKEN")),
+            "gotify_enabled": _env_bool(env_manager.get_value("GOTIFY_ENABLED"), True),
             "bark_url": _normalize_existing_text(env_manager.get_value("BARK_URL")),
+            "bark_enabled": _env_bool(env_manager.get_value("BARK_ENABLED"), True),
             "wx_bot_url": _normalize_existing_text(env_manager.get_value("WX_BOT_URL")),
+            "wx_bot_enabled": _env_bool(env_manager.get_value("WX_BOT_ENABLED"), True),
             "telegram_bot_token": _normalize_existing_text(env_manager.get_value("TELEGRAM_BOT_TOKEN")),
             "telegram_chat_id": _normalize_existing_text(env_manager.get_value("TELEGRAM_CHAT_ID")),
             "telegram_api_base_url": (
                 _normalize_existing_text(env_manager.get_value("TELEGRAM_API_BASE_URL"))
                 or DEFAULT_TELEGRAM_API_BASE_URL
             ),
+            "telegram_enabled": _env_bool(env_manager.get_value("TELEGRAM_ENABLED"), True),
             "webhook_url": _normalize_existing_text(env_manager.get_value("WEBHOOK_URL")),
             "webhook_method": _normalize_existing_text(env_manager.get_value("WEBHOOK_METHOD")) or "POST",
             "webhook_headers": _normalize_existing_text(env_manager.get_value("WEBHOOK_HEADERS")),
             "webhook_content_type": _normalize_existing_text(env_manager.get_value("WEBHOOK_CONTENT_TYPE")) or "JSON",
             "webhook_query_parameters": _normalize_existing_text(env_manager.get_value("WEBHOOK_QUERY_PARAMETERS")),
             "webhook_body": _normalize_existing_text(env_manager.get_value("WEBHOOK_BODY")),
+            "webhook_enabled": _env_bool(env_manager.get_value("WEBHOOK_ENABLED"), True),
             "smtp_host": _normalize_existing_text(env_manager.get_value("SMTP_HOST")),
             "smtp_port": _env_int(env_manager.get_value("SMTP_PORT"), DEFAULT_SMTP_PORT),
             "smtp_username": _normalize_existing_text(env_manager.get_value("SMTP_USERNAME")),
@@ -317,6 +393,7 @@ def load_notification_settings() -> NotificationSettings:
             "smtp_from_address": _normalize_existing_text(env_manager.get_value("SMTP_FROM_ADDRESS")),
             "smtp_to_address": _normalize_existing_text(env_manager.get_value("SMTP_TO_ADDRESS")),
             "smtp_use_ssl": _env_bool(env_manager.get_value("SMTP_USE_SSL"), True),
+            "email_enabled": _env_bool(env_manager.get_value("EMAIL_ENABLED"), True),
             "pcurl_to_mobile": _env_bool(env_manager.get_value("PCURL_TO_MOBILE"), True),
         }
     )
@@ -393,24 +470,33 @@ def _normalize_notification_values(values: dict) -> dict:
 
 def _validate_notification_settings(settings: NotificationSettings) -> None:
     for field_name in URL_FIELDS:
+        enabled_attr = URL_FIELD_ENABLED_ATTR.get(field_name)
+        if enabled_attr and not getattr(settings, enabled_attr):
+            continue
         value = getattr(settings, NOTIFICATION_FIELD_MAP[field_name])
         if value is not None:
             _validate_http_url(field_name, value)
 
-    _validate_pair(
-        "GOTIFY_URL",
-        settings.gotify_url,
-        "GOTIFY_TOKEN",
-        settings.gotify_token,
-    )
-    _validate_pair(
-        "TELEGRAM_BOT_TOKEN",
-        settings.telegram_bot_token,
-        "TELEGRAM_CHAT_ID",
-        settings.telegram_chat_id,
-    )
+    if settings.gotify_enabled:
+        _validate_pair(
+            "GOTIFY_URL",
+            settings.gotify_url,
+            "GOTIFY_TOKEN",
+            settings.gotify_token,
+        )
+    if settings.telegram_enabled:
+        _validate_pair(
+            "TELEGRAM_BOT_TOKEN",
+            settings.telegram_bot_token,
+            "TELEGRAM_CHAT_ID",
+            settings.telegram_chat_id,
+        )
 
-    _validate_smtp_settings(settings)
+    if settings.email_enabled:
+        _validate_smtp_settings(settings)
+
+    if not settings.webhook_enabled:
+        return
 
     if settings.webhook_method not in ALLOWED_WEBHOOK_METHODS:
         allowed = ", ".join(sorted(ALLOWED_WEBHOOK_METHODS))
