@@ -251,7 +251,7 @@ async def put_global_blacklist(body: GlobalBlacklistRequest):
 async def get_system_status(
     process_service: ProcessService = Depends(get_process_service),
 ):
-    state_file = "xianyu_state.json"
+    state_file = scraper_settings.state_file
     login_state_exists = os.path.exists(state_file)
     env_file_exists = os.path.exists(env_manager.env_file)
     openai_api_key = env_manager.get_value("OPENAI_API_KEY", "")

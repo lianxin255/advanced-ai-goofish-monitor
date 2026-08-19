@@ -7,6 +7,8 @@ import aiofiles
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from src.infrastructure.config.settings import scraper_settings
+
 
 router = APIRouter(prefix="/api/login-state", tags=["login-state"])
 
@@ -20,8 +22,8 @@ class LoginStateUpdate(BaseModel):
 async def update_login_state(
     data: LoginStateUpdate,
 ):
-    """接收前端发送的登录状态JSON字符串，并保存到 xianyu_state.json"""
-    state_file = "xianyu_state.json"
+    """接收前端发送的登录状态JSON字符串，并保存到配置的登录状态文件"""
+    state_file = scraper_settings.state_file
 
     try:
         # 验证是否是有效的JSON
@@ -39,8 +41,8 @@ async def update_login_state(
 
 @router.delete("", response_model=dict)
 async def delete_login_state():
-    """删除 xianyu_state.json 文件"""
-    state_file = "xianyu_state.json"
+    """删除配置的登录状态文件"""
+    state_file = scraper_settings.state_file
 
     if os.path.exists(state_file):
         try:

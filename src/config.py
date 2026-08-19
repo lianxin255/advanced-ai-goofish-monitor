@@ -4,48 +4,66 @@ import sys
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
+from src.infrastructure.config.settings import (
+    AISettings,
+    AppSettings,
+    NotificationSettings,
+    ScraperSettings,
+)
+
 # --- AI & Notification Configuration ---
+# 仍然显式 load_dotenv 一次，兼容历史上依赖"导入 src.config 即会把 .env 灌入
+# os.environ"这一副作用的调用方；实际的配置解析逻辑统一委托给 settings.py 的
+# Pydantic 模型（在此处每次导入都重新实例化，而不是复用其模块级单例），
+# 一是避免两套独立的 os.getenv 解析逻辑产生不一致的默认值（曾经出现过
+# PCURL_TO_MOBILE、STATE_FILE 在两侧默认值不一致的问题），二是保留"重新
+# import/reload 本模块即可拿到最新环境变量"的原有行为。
 load_dotenv(override=True)
 
+ai_settings = AISettings()
+notification_settings = NotificationSettings()
+scraper_settings = ScraperSettings()
+settings = AppSettings()
+
 # --- File Paths & Directories ---
-STATE_FILE = "xianyu_state.json"
-IMAGE_SAVE_DIR = "images"
-CONFIG_FILE = "config.json"
+STATE_FILE = scraper_settings.state_file
+IMAGE_SAVE_DIR = settings.image_save_dir
+CONFIG_FILE = settings.config_file
 os.makedirs(IMAGE_SAVE_DIR, exist_ok=True)
 
 # 任务隔离的临时图片目录前缀
-TASK_IMAGE_DIR_PREFIX = "task_images_"
+TASK_IMAGE_DIR_PREFIX = settings.task_image_dir_prefix
 
 # --- API URL Patterns ---
 API_URL_PATTERN = "h5api.m.goofish.com/h5/mtop.taobao.idlemtopsearch.pc.search"
 DETAIL_API_URL_PATTERN = "h5api.m.goofish.com/h5/mtop.taobao.idle.pc.detail"
 
 # --- Environment Variables ---
-API_KEY = os.getenv("OPENAI_API_KEY")
-BASE_URL = os.getenv("OPENAI_BASE_URL")
-MODEL_NAME = os.getenv("OPENAI_MODEL_NAME")
-PROXY_URL = os.getenv("PROXY_URL")
-NTFY_TOPIC_URL = os.getenv("NTFY_TOPIC_URL")
-GOTIFY_URL = os.getenv("GOTIFY_URL")
-GOTIFY_TOKEN = os.getenv("GOTIFY_TOKEN")
-BARK_URL = os.getenv("BARK_URL")
-WX_BOT_URL = os.getenv("WX_BOT_URL")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-WEBHOOK_METHOD = os.getenv("WEBHOOK_METHOD", "POST").upper()
-WEBHOOK_HEADERS = os.getenv("WEBHOOK_HEADERS")
-WEBHOOK_CONTENT_TYPE = os.getenv("WEBHOOK_CONTENT_TYPE", "JSON").upper()
-WEBHOOK_QUERY_PARAMETERS = os.getenv("WEBHOOK_QUERY_PARAMETERS")
-WEBHOOK_BODY = os.getenv("WEBHOOK_BODY")
-PCURL_TO_MOBILE = os.getenv("PCURL_TO_MOBILE", "false").lower() == "true"
-RUN_HEADLESS = os.getenv("RUN_HEADLESS", "true").lower() != "false"
-LOGIN_IS_EDGE = os.getenv("LOGIN_IS_EDGE", "false").lower() == "true"
-RUNNING_IN_DOCKER = os.getenv("RUNNING_IN_DOCKER", "false").lower() == "true"
-AI_DEBUG_MODE = os.getenv("AI_DEBUG_MODE", "false").lower() == "true"
-SKIP_AI_ANALYSIS = os.getenv("SKIP_AI_ANALYSIS", "false").lower() == "true"
-ENABLE_THINKING = os.getenv("ENABLE_THINKING", "false").lower() == "true"
-ENABLE_RESPONSE_FORMAT = os.getenv("ENABLE_RESPONSE_FORMAT", "true").lower() == "true"
+API_KEY = ai_settings.api_key
+BASE_URL = ai_settings.base_url or None
+MODEL_NAME = ai_settings.model_name or None
+PROXY_URL = ai_settings.proxy_url
+NTFY_TOPIC_URL = notification_settings.ntfy_topic_url
+GOTIFY_URL = notification_settings.gotify_url
+GOTIFY_TOKEN = notification_settings.gotify_token
+BARK_URL = notification_settings.bark_url
+WX_BOT_URL = notification_settings.wx_bot_url
+TELEGRAM_BOT_TOKEN = notification_settings.telegram_bot_token
+TELEGRAM_CHAT_ID = notification_settings.telegram_chat_id
+WEBHOOK_URL = notification_settings.webhook_url
+WEBHOOK_METHOD = (notification_settings.webhook_method or "POST").upper()
+WEBHOOK_HEADERS = notification_settings.webhook_headers
+WEBHOOK_CONTENT_TYPE = (notification_settings.webhook_content_type or "JSON").upper()
+WEBHOOK_QUERY_PARAMETERS = notification_settings.webhook_query_parameters
+WEBHOOK_BODY = notification_settings.webhook_body
+PCURL_TO_MOBILE = notification_settings.pcurl_to_mobile
+RUN_HEADLESS = scraper_settings.run_headless
+LOGIN_IS_EDGE = scraper_settings.login_is_edge
+RUNNING_IN_DOCKER = scraper_settings.running_in_docker
+AI_DEBUG_MODE = ai_settings.debug_mode
+SKIP_AI_ANALYSIS = ai_settings.skip_analysis
+ENABLE_THINKING = ai_settings.enable_thinking
+ENABLE_RESPONSE_FORMAT = ai_settings.enable_response_format
 
 # --- Headers ---
 IMAGE_DOWNLOAD_HEADERS = {
