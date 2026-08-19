@@ -1,22 +1,23 @@
-# Xianyu Intelligent Monitor Bot
+# Xianyu Intelligent Monitor Bot (Evolved Fork)
 
 [中文](README.md) ｜ [English]
 
-A Playwright and AI-powered multi-task real-time monitoring tool for Xianyu (闲鱼), featuring a complete web management interface.
+This project is forked from [Usagi-org/ai-goofish-monitor](https://github.com/Usagi-org/ai-goofish-monitor) and builds on its Playwright + AI monitoring core with a series of ongoing changes: primary storage moved from JSON/JSONL to SQLite, blacklist matching moved from "post-crawl filtering" to "crawl-time interception", per-channel notification toggles, a smart sort for results, and automatic backoff/retry when the AI provider rate-limits requests. The core idea is unchanged — concurrent multi-task Xianyu monitoring backed by multimodal AI analysis and a web management UI.
 
 ## Core Features
 
-- **Web Visual Management**: Task management, account management, AI criteria editing, run logs, results browsing
-- **AI-Driven**: Natural language task creation, multimodal model for in-depth product analysis
-- **Multi-Task Concurrency**: Independent configuration for keywords, prices, filters, and AI prompts
+- **Web Visual Management**: Task management, account management, AI criteria editing, run logs, results browsing — all from the browser, no CLI required
+- **AI-Driven**: Describe your requirement in natural language to generate analysis criteria; the multimodal model judges each item against text and images
+- **Multi-Task Concurrency**: Independent configuration for keywords, prices, filters, prompts, and bound accounts per task
 - **SQLite as Primary Storage**: Tasks, results, and price history are persisted in one embedded database instead of repeatedly scanning `jsonl`
 - **Advanced Filtering**: Free shipping, new listing time range, province/city/district filtering
-- **Global Crawl Blacklist**: Items matching a blacklist keyword are ignored during crawling itself (no detail fetch, no save, no notification), across every task
-- **Per-Task Blacklist**: Each task can define its own blacklist keywords; matching items are skipped during that task's crawl
-- **Instant Notifications**: Supports ntfy.sh, WeChat Work (企业微信), Bark, Telegram, Email (SMTP), Webhook, each channel can be toggled on/off independently
+- **Two-Level Blacklist**: A global blacklist applies to every task; a per-task blacklist only affects one task. Matches are intercepted during crawling itself — no detail fetch, no save, no notification
+- **Instant Notifications**: Supports ntfy.sh, WeChat Work (企业微信), Bark, Telegram, Email (SMTP), Webhook — each channel can be toggled on/off independently
+- **Smart Result Sorting**: AI-recommended items surface first, with the rest ordered by price ascending
 - **Scheduled Tasks**: Cron expression configuration for periodic tasks
-- **Account & Proxy Rotation**: Multi-account management, task-account binding, proxy pool rotation with failure retry
-- **Docker Deployment**: One-click containerized deployment
+- **Account & Proxy Rotation**: Multi-account management, task-account binding, proxy pool rotation with failure retry to reduce the odds of being rate-limited
+- **AI Rate-Limit Self-Healing**: 429 responses trigger automatic exponential backoff and retry, no manual intervention needed
+- **Docker Deployment**: One-click containerized deployment with Chromium built in
 
 ## Screenshots
 
@@ -35,8 +36,8 @@ A Playwright and AI-powered multi-task real-time monitoring tool for Xianyu (闲
 - Chrome or Edge on desktop systems. On Linux, Chromium also works. `start.sh` checks this prerequisite before continuing
 
 ```bash
-git clone https://github.com/Usagi-org/ai-goofish-monitor
-cd ai-goofish-monitor
+git clone https://github.com/LinBlink/advanced-ai-goofish-monitor
+cd advanced-ai-goofish-monitor
 cp .env.example .env
 ```
 
@@ -76,7 +77,7 @@ chmod +x start.sh
 ## 🐳 Docker Deployment (Recommended)
 
 ```bash
-git clone https://github.com/Usagi-org/ai-goofish-monitor && cd ai-goofish-monitor
+git clone https://github.com/LinBlink/advanced-ai-goofish-monitor && cd advanced-ai-goofish-monitor
 cp .env.example .env
 vim .env # fill in the required values
 docker compose up -d
@@ -86,6 +87,7 @@ docker compose down
 
 - Default Web UI: `http://127.0.0.1:8000`
 - The published Docker image already includes Chromium, so no extra browser install is required on the host.
+- `docker-compose.yaml` still pulls the upstream image `ghcr.io/usagi-org/ai-goofish:latest` by default (this fork does not publish its own image yet). If you need an image that includes this fork's changes, see "Build the Image Locally" below.
 - Update image: `docker compose pull && docker compose up -d`
 - If you change `SERVER_PORT` in `.env`, update the `ports` mapping in `docker-compose.yaml` as well.
 - `docker-compose.yaml` now mounts the primary SQLite database directory as `./data:/app/data`, with the default database file at `data/app.sqlite3`
@@ -96,6 +98,17 @@ docker compose down
   - `logs/` for runtime logs
   - `images/` for downloaded product images and per-task temporary image folders
   - `config.json`, `jsonl/`, and `price_history/` as legacy sources for the first SQLite migration
+
+### Build the Image Locally
+
+To run this fork's latest changes without waiting for an upstream image update, build it yourself:
+
+```bash
+docker build -f Dockerfile.release -t ai-goofish-monitor:local .
+APP_IMAGE=ai-goofish-monitor:local docker compose up -d
+```
+
+`Dockerfile.release` builds on top of the upstream `ghcr.io/usagi-org/ai-goofish-base:latest` base image (which bundles Playwright/Chromium and other system dependencies) and only rebuilds the frontend and application layers, so it's fairly quick.
 
 ### Storage and Migration
 
@@ -289,7 +302,9 @@ This means your AI provider's rate limit was hit. The app automatically backs of
 <details>
 <summary>Click to expand acknowledgments</summary>
 
-This project referenced the following excellent projects during development. Special thanks to:
+This project is forked from [Usagi-org/ai-goofish-monitor](https://github.com/Usagi-org/ai-goofish-monitor) — thanks to that project and its contributors for the foundation this fork builds on.
+
+The upstream project also referenced the following excellent projects during development. Special thanks to:
 
 - [superboyyy/xianyu_spider](https://github.com/superboyyy/xianyu_spider)
 
@@ -319,4 +334,4 @@ Also thanks to ClaudeCode/Gemini/Codex and other model tools for freeing our han
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Usagi-org/ai-goofish-monitor&type=Date)](https://www.star-history.com/#Usagi-org/ai-goofish-monitor&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=LinBlink/advanced-ai-goofish-monitor&type=Date)](https://www.star-history.com/#LinBlink/advanced-ai-goofish-monitor&Date)

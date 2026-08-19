@@ -1,22 +1,22 @@
-# 闲鱼智能监控系统
+# 闲鱼智能监控系统（进化版）
 
 [中文] ｜ [English](README_EN.md)
 
-基于 Playwright 和 AI 的闲鱼多任务实时监控，提供完整的 Web 管理界面。
-
+本项目 fork 自 [Usagi-org/ai-goofish-monitor](https://github.com/Usagi-org/ai-goofish-monitor)，在原有的 Playwright + AI 闲鱼监控能力之上做了持续改造：把主存储从 JSON/JSONL 迁移到 SQLite、把黑名单从"结果过滤"提前到"爬取阶段拦截"、通知渠道支持逐个开关、结果列表增加智能排序、AI 调用遇到限流会自动退避重试。核心定位不变——多任务并发监控闲鱼商品，配合多模态 AI 分析和 Web 管理界面。
 
 ## 核心特性
 
-- **Web 可视化管理**: 任务管理、账号管理、AI 标准编辑、运行日志、结果浏览
-- **AI 驱动**: 自然语言创建任务，多模态模型深度分析商品
-- **多任务并发**: 独立配置关键词、价格、筛选条件和 AI Prompt
-- **高级筛选**: 包邮、新发布时间范围、省/市/区三级区域筛选
-- **全局爬取黑名单**: 命中黑名单关键词的商品在爬取阶段直接忽略（不获取详情、不保存、不通知），对所有任务生效
-- **任务独立黑名单**: 每个任务可单独配置黑名单关键词，命中规则的商品在该任务爬取阶段即被跳过
-- **即时通知**: 支持 ntfy.sh、企业微信、Bark、Telegram、邮件(SMTP)、Webhook等多渠道，每个渠道可单独开关
-- **定时调度**: 支持 Cron 配置周期性任务
-- **账号与代理轮换**: 多账号管理、任务绑定账号、代理池轮换与失败重试
-- **Docker 部署**: 一键容器化部署
+- **Web 可视化管理**：任务、账号、AI 判断标准、运行日志、监控结果全部在浏览器里操作，不用碰命令行
+- **AI 判断商品**：用自然语言描述需求即可生成分析标准，多模态模型会结合图文判断商品是否符合预期
+- **多任务并发**：每个任务独立配置关键词、价格区间、筛选条件、Prompt 和绑定账号，互不影响
+- **精细化筛选**：包邮、新发布时间范围、省/市/区三级地区筛选
+- **两级黑名单**：全局黑名单对所有任务生效，任务黑名单只影响单个任务；命中的商品在爬取阶段就被拦下，不会进详情抓取、不落库、也不会触发通知
+- **多渠道即时通知**：ntfy.sh、企业微信、Bark、Telegram、邮件(SMTP)、Webhook，每个渠道可单独开关，不用全开或全关
+- **结果智能排序**：AI 推荐的商品优先展示，其余按价格从低到高排列
+- **定时调度**：Cron 表达式配置周期性抓取
+- **账号与代理轮换**：多账号管理、任务可绑定指定账号，代理池轮换配合失败重试降低被风控概率
+- **AI 限流自愈**：遇到 429 会按指数退避自动重试，无需人工干预
+- **Docker 一键部署**：内置 Chromium，开箱即用
 
 ## 截图
 
@@ -28,7 +28,7 @@
 ## 🐳 Docker 部署（推荐）
 
 ```bash
-git clone https://github.com/Usagi-org/ai-goofish-monitor && cd ai-goofish-monitor
+git clone https://github.com/LinBlink/advanced-ai-goofish-monitor && cd advanced-ai-goofish-monitor
 cp .env.example .env
 vim .env # 填写相关配置项
 docker compose up -d
@@ -47,7 +47,7 @@ docker compose up -d
 
 - 默认 Web UI 地址：`http://127.0.0.1:8000`
 - Docker 镜像已内置 Chromium，无需宿主机额外安装浏览器。
-- 官方镜像地址：`ghcr.io/usagi-org/ai-goofish:latest`
+- `docker-compose.yaml` 默认仍拉取上游镜像 `ghcr.io/usagi-org/ai-goofish:latest`（本 fork 暂未独立发布镜像）；如果需要包含本仓库改动的镜像，请参考下方“本地构建镜像”自行构建。
 - 更新镜像：`docker compose pull && docker compose up -d`
 - 如果你修改了 `.env` 中的 `SERVER_PORT`，请同步更新 `docker-compose.yaml` 里的端口映射。
 - `docker-compose.yaml` 默认会把 SQLite 主库挂载到 `./data:/app/data`，数据库文件默认为 `data/app.sqlite3`
@@ -58,6 +58,17 @@ docker compose up -d
     - `logs/`  运行日志
     - `images/`  商品图片与任务临时图片目录
     - `config.json`、`jsonl/`、`price_history/`  首次升级到 SQLite 时用于兼容导入的旧数据源
+
+### 本地构建镜像
+
+如果想用上本仓库的最新改动而不是等上游镜像更新，可以自己构建：
+
+```bash
+docker build -f Dockerfile.release -t ai-goofish-monitor:local .
+APP_IMAGE=ai-goofish-monitor:local docker compose up -d
+```
+
+`Dockerfile.release` 默认基于上游发布的 `ghcr.io/usagi-org/ai-goofish-base:latest` 基础镜像（内置 Playwright/Chromium 等系统依赖），只重新构建前端和应用代码层，构建速度较快。
 
 ### 数据存储与迁移
 
@@ -136,8 +147,8 @@ docker compose up -d
 - Chrome / Edge 浏览器（Linux 环境也可使用 Chromium；`start.sh` 会先检查浏览器是否存在）
 
 ```bash
-git clone https://github.com/Usagi-org/ai-goofish-monitor
-cd ai-goofish-monitor
+git clone https://github.com/LinBlink/advanced-ai-goofish-monitor
+cd advanced-ai-goofish-monitor
 cp .env.example .env
 ```
 
@@ -304,7 +315,9 @@ AI 模式会先生成分析标准，再创建任务。现在该流程已改为�
 <details>
 <summary>点击展开致谢内容</summary>
 
-本项目在开发过程中参考了以下优秀项目，特此感谢：
+本项目 fork 自 [Usagi-org/ai-goofish-monitor](https://github.com/Usagi-org/ai-goofish-monitor)，感谢原项目及其贡献者打下的基础，本仓库的改造均建立在此之上。
+
+原项目在开发过程中也参考了以下项目，一并感谢：
 
 - [superboyyy/xianyu_spider](https://github.com/superboyyy/xianyu_spider)
 
@@ -334,6 +347,4 @@ AI 模式会先生成分析标准，再创建任务。现在该流程已改为�
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Usagi-org/ai-goofish-monitor&type=Date)](https://www.star-history.com/#Usagi-org/ai-goofish-monitor&Date)
-
-![Alt](https://repobeats.axiom.co/api/embed/b40d8a112271b4bddabadd8fe2635be3c1aa28a3.svg "Repobeats analytics image")
+[![Star History Chart](https://api.star-history.com/svg?repos=LinBlink/advanced-ai-goofish-monitor&type=Date)](https://www.star-history.com/#LinBlink/advanced-ai-goofish-monitor&Date)
