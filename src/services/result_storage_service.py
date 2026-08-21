@@ -548,3 +548,29 @@ def load_visible_result_item_ids(filename: str) -> set[str]:
         if item_id:
             item_ids.add(item_id)
     return item_ids
+
+
+def load_ai_recommended_item_ids(filename: str) -> set[str]:
+    """返回被 AI 判定为推荐（is_recommended=1 且 analysis_source='ai'）的可见商品 ID。
+
+    价格趋势图表只应以 AI 推荐的商品价格作为资料源，因此价格历史相关的服务
+    需要用这份 ID 集合去过滤价格快照，而不是使用全部抓取到的商品。
+    """
+    bootstrap_sqlite_storage()
+    with sqlite_connection() as conn:
+        recommended_records = _load_filtered_records_from_conn(
+            conn,
+            filename=filename,
+            ai_recommended_only=True,
+            keyword_recommended_only=False,
+            sort_by="crawl_time",
+            sort_order="desc",
+            include_hidden=False,
+        )
+    item_ids: set[str] = set()
+    for record in recommended_records:
+        product = record.get("商品信息", {}) or {}
+        item_id = str(product.get("商品ID") or "").strip()
+        if item_id:
+            item_ids.add(item_id)
+    return item_ids

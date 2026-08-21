@@ -15,7 +15,10 @@ from src.services.price_history_service import (
 from src.services.result_file_service import (
     normalize_keyword_from_filename,
 )
-from src.services.result_storage_service import load_result_summary
+from src.services.result_storage_service import (
+    load_ai_recommended_item_ids,
+    load_result_summary,
+)
 
 
 def normalize_text(value: str | None) -> str:
@@ -271,7 +274,11 @@ async def summarize_result_file(
     if scan_activity:
         activities.append(scan_activity)
 
-    price_history = await asyncio.to_thread(build_price_history_insights, keyword)
+    # 价格趋势图只以 AI 推荐的商品价格为资料源，其余商品价格不计入统计。
+    ai_recommended_item_ids = await asyncio.to_thread(load_ai_recommended_item_ids, filename)
+    price_history = await asyncio.to_thread(
+        build_price_history_insights, keyword, visible_item_ids=ai_recommended_item_ids
+    )
     history_summary = price_history.get("history_summary") or {}
 
     summary.update(

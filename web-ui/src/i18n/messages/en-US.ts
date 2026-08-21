@@ -158,7 +158,11 @@ const enUS = {
     chart: {
       avgPrice: 'Average',
       medianPrice: 'Median',
+      minPrice: 'Daily Min',
       noTrend: 'No trend data to render yet',
+      aiSourceNote: 'Data source: only AI-recommended items are counted; other prices are excluded.',
+      highMark: 'High ¥{price}',
+      lowMark: 'Low ¥{price}',
     },
     card: {
       curated: 'Curated',

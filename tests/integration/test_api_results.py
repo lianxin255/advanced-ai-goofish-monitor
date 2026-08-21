@@ -220,7 +220,8 @@ def test_results_insights_and_export_csv(tmp_path, monkeypatch):
     insights_resp = client.get("/api/results/demo_full_data.jsonl/insights")
     assert insights_resp.status_code == 200
     insights = insights_resp.json()
-    assert insights["market_summary"]["sample_count"] == 2
+    # 价格趋势只统计 AI 推荐的商品（商品1002 是 keyword 命中，不计入）。
+    assert insights["market_summary"]["sample_count"] == 1
     assert len(insights["daily_trend"]) == 2
 
     list_resp = client.get("/api/results/demo_full_data.jsonl")

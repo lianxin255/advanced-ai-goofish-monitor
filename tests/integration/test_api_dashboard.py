@@ -167,14 +167,15 @@ def test_dashboard_summary_includes_latest_history_avg_price(tmp_path, monkeypat
         },
         "ai_analysis": {
             "analysis_source": "ai",
-            "is_recommended": False,
-            "reason": "价格偏高",
+            "is_recommended": True,
+            "reason": "价格低于市场均价",
         },
     }
     _write_jsonl(jsonl_dir / "sony_a7r4_full_data.jsonl", [record])
 
     from src.services.price_history_service import record_market_snapshots
 
+    # 价格趋势只统计 AI 推荐的商品价格，因此上面的记录必须是 is_recommended=True。
     record_market_snapshots(
         keyword=created.keyword,
         task_name=created.task_name,
