@@ -1,0 +1,30 @@
+name: Lint
+
+# 轻量静态门禁：只拦截"未定义名"这类会直达生产镜像的低级错误
+# （示例：9b0cab2 引入的 process_service.py 缺 import os，容器启动即崩）。
+# 故意不启用完整 ruff 规则集，保持零噪音、零既有代码改动。
+
+on:
+  push:
+    branches: [main]
+    paths: ["**.py"]
+  pull_request:
+    paths: ["**.py"]
+
+jobs:
+  ruff-f821:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install --quiet ruff
+
+      - name: Check undefined names (F821)
+        run: ruff check --select F821 --output-format=github src/ tests/
