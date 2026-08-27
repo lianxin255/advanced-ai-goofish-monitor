@@ -25,6 +25,11 @@ def _build_summary_metrics(tasks: list[Task], summary_list: list[dict[str, Any]]
     return {
         "enabled_tasks": sum(1 for task in tasks if task.enabled),
         "running_tasks": sum(1 for task in tasks if task.is_running),
+        "queued_tasks": sum(
+            1
+            for task in tasks
+            if getattr(task, "execution_status", "idle") == "queued"
+        ),
         "result_files": sum(1 for item in summary_list if item.get("filename")),
         "scanned_items": sum(int(item["total_items"]) for item in summary_list),
         "recommended_items": sum(int(item["recommended_items"]) for item in summary_list),

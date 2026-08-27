@@ -43,3 +43,10 @@ class TaskService:
         """更新任务运行状态"""
         task_update = TaskUpdate(is_running=is_running)
         return await self.update_task(task_id, task_update)
+
+    async def update_task_runtime(
+        self, task_id: int, is_running: bool, execution_status: str
+    ) -> Task:
+        """更新任务运行态与执行队列状态"""
+        task_update = TaskUpdate(is_running=is_running, execution_status=execution_status)
+        return await self.update_task(task_id, task_update)

@@ -24,6 +24,19 @@ class TaskStatus(str, Enum):
     SCHEDULED = "scheduled"
 
 
+class ExecutionStatus(str, Enum):
+    """任务执行状态（串行队列视角）
+
+    IDLE: 空闲（未在运行也不在队列中）
+    QUEUED: 已加入串行队列，等待前面的任务结束
+    RUNNING: 正在运行
+    """
+
+    IDLE = "idle"
+    QUEUED = "queued"
+    RUNNING = "running"
+
+
 def _normalize_keyword_values(value) -> List[str]:
     if value is None:
         return []
@@ -132,6 +145,7 @@ class Task(BaseModel):
     keyword_rules: List[str] = Field(default_factory=list)
     blacklist_keywords: List[str] = Field(default_factory=list)
     is_running: bool = False
+    execution_status: ExecutionStatus = ExecutionStatus.IDLE
 
     @model_validator(mode="before")
     @classmethod
@@ -261,6 +275,7 @@ class TaskUpdate(BaseModel):
     keyword_rules: Optional[List[str]] = None
     blacklist_keywords: Optional[List[str]] = None
     is_running: Optional[bool] = None
+    execution_status: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod

@@ -44,7 +44,8 @@ SCHEMA_STATEMENTS = (
         decision_mode TEXT NOT NULL,
         keyword_rules_json TEXT NOT NULL,
         is_running INTEGER NOT NULL,
-        blacklist_keywords_json TEXT NOT NULL DEFAULT '[]'
+        blacklist_keywords_json TEXT NOT NULL DEFAULT '[]',
+        execution_status TEXT NOT NULL DEFAULT 'idle'
     )
     """,
     """
@@ -164,7 +165,25 @@ def init_schema(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
     _migrate_result_items_status(conn)
     _migrate_tasks_blacklist_keywords(conn)
+    _migrate_tasks_execution_status(conn)
     conn.commit()
+
+
+def _migrate_tasks_execution_status(conn: sqlite3.Connection) -> None:
+    """为 tasks 表添加 execution_status 列（仅执行一次）。"""
+    row = conn.execute(
+        "SELECT value FROM app_metadata WHERE key = 'migration:tasks_execution_status'"
+    ).fetchone()
+    if row is not None:
+        return
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()]
+    if "execution_status" not in cols:
+        conn.execute(
+            "ALTER TABLE tasks ADD COLUMN execution_status TEXT NOT NULL DEFAULT 'idle'"
+        )
+    conn.execute(
+        "INSERT OR REPLACE INTO app_metadata(key, value) VALUES ('migration:tasks_execution_status', 'done')"
+    )
 
 
 def _migrate_result_items_status(conn: sqlite3.Connection) -> None:

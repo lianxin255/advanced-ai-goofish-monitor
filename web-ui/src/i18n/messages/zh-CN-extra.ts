@@ -143,6 +143,14 @@ const zhCNExtra = {
       start: '启动',
       stop: '停止',
       stopping: '停止中',
+      queued: '排队中',
+      cancelQueue: '取消排队',
+    },
+    queue: {
+      title: '执行队列',
+      hint: '同一时间仅运行一个任务，其余按顺序排队',
+      running: '运行中',
+      waiting: '排队等待',
     },
   },
   rotation: {

@@ -303,13 +303,21 @@ async def summarize_result_file(
 def build_task_state_activities(tasks: list[Task]) -> list[dict[str, Any]]:
     activities: list[dict[str, Any]] = []
     for task in tasks:
-        status = "运行中" if task.is_running else "已启用"
-        detail = "任务正在轮询闲鱼结果" if task.is_running else "等待下一次调度执行"
-        if not task.is_running and not task.enabled:
+        execution_status = getattr(task, "execution_status", "idle") or "idle"
+        if execution_status == "running":
+            status = "运行中"
+            detail = "任务正在轮询闲鱼结果"
+        elif execution_status == "queued":
+            status = "排队中"
+            detail = "已在执行队列中，等待前面的任务结束"
+        else:
+            status = "已启用"
+            detail = "等待下一次调度执行"
+        if not task.is_running and not task.enabled and execution_status == "idle":
             continue
         activities.append(
             build_activity(
-                activity_id=f"task:{task.id}:{'running' if task.is_running else 'ready'}",
+                activity_id=f"task:{task.id}:{execution_status}",
                 activity_type="task",
                 task_name=task.task_name,
                 keyword=task.keyword,

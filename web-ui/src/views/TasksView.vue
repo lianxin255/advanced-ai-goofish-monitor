@@ -7,6 +7,7 @@ import type { Task, TaskUpdate } from '@/types/task.d.ts'
 import { parseTaskFormDefaults } from '@/lib/taskFormQuery'
 import TaskCreateDialog from '@/components/tasks/TaskCreateDialog.vue'
 import TasksTable from '@/components/tasks/TasksTable.vue'
+import TaskQueuePanel from '@/components/tasks/TaskQueuePanel.vue'
 import TaskForm from '@/components/tasks/TaskForm.vue'
 import { listAccounts, type AccountItem } from '@/api/accounts'
 import { Button } from '@/components/ui/button'
@@ -24,6 +25,7 @@ const { t } = useI18n()
 
 const {
   tasks,
+  queue,
   isLoading,
   error,
   fetchTasks,
@@ -266,10 +268,17 @@ onMounted(fetchAccountOptions)
       <span class="block sm:inline">{{ error.message }}</span>
     </div>
 
+    <TaskQueuePanel
+      :queue="queue"
+      :tasks="tasks"
+      @stop-task="handleStopTask"
+    />
+
     <TasksTable
       :tasks="tasks"
       :is-loading="isLoading"
       :stopping-ids="stoppingTaskIds"
+      :queue="queue"
       @delete-task="handleDeleteTask"
       @edit-task="handleEditTask"
       @run-task="handleStartTask"

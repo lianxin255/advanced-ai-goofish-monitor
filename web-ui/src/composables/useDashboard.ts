@@ -41,6 +41,7 @@ export function useDashboard() {
   on('tasks_updated', fetchSummary)
   on('results_updated', fetchSummary)
   on('task_status_changed', fetchSummary)
+  on('task_queue_changed', fetchSummary)
 
   fetchSummary()
 

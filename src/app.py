@@ -45,21 +45,29 @@ scheduler_service = SchedulerService(process_service)
 task_generation_service = TaskGenerationService()
 
 
-async def _sync_task_runtime_status(task_id: int, is_running: bool) -> None:
+async def _sync_task_status(task_id: int, is_running: bool, execution_status: str) -> None:
     task_service = TaskService(SqliteTaskRepository())
     task = await task_service.get_task(task_id)
-    if not task or task.is_running == is_running:
+    if not task:
         return
-    await task_service.update_task_status(task_id, is_running)
+    current_status = getattr(task, "execution_status", "idle") or "idle"
+    if task.is_running == is_running and current_status == execution_status:
+        return
+    await task_service.update_task_runtime(task_id, is_running, execution_status)
     await websocket.broadcast_message(
         "task_status_changed",
-        {"id": task_id, "is_running": is_running},
+        {"id": task_id, "is_running": is_running, "execution_status": execution_status},
+    )
+    await websocket.broadcast_message(
+        "task_queue_changed",
+        process_service.get_queue_state(),
     )
 
 
 process_service.set_lifecycle_hooks(
-    on_started=lambda task_id: _sync_task_runtime_status(task_id, True),
-    on_stopped=lambda task_id: _sync_task_runtime_status(task_id, False),
+    on_enqueued=lambda task_id: _sync_task_status(task_id, False, "queued"),
+    on_started=lambda task_id: _sync_task_status(task_id, True, "running"),
+    on_stopped=lambda task_id: _sync_task_status(task_id, False, "idle"),
 )
 
 # 设置全局 ProcessService 实例供依赖注入使用
@@ -84,12 +92,13 @@ async def lifespan(app: FastAPI):
     tasks_list = await task_service.get_all_tasks()
 
     for task in tasks_list:
-        if task.is_running:
-            await task_service.update_task_status(task.id, False)
+        if task.is_running or getattr(task, "execution_status", "idle") != "idle":
+            await task_service.update_task_runtime(task.id, False, "idle")
 
     # 加载定时任务
     await scheduler_service.reload_jobs(tasks_list)
     scheduler_service.start()
+    process_service.start()
 
     print("应用启动完成")
 

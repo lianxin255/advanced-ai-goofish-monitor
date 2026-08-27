@@ -143,6 +143,14 @@ const enUSExtra = {
       start: 'Start',
       stop: 'Stop',
       stopping: 'Stopping...',
+      queued: 'Queued',
+      cancelQueue: 'Cancel Queue',
+    },
+    queue: {
+      title: 'Execution Queue',
+      hint: 'Only one task runs at a time; the rest wait in order',
+      running: 'Running',
+      waiting: 'Waiting',
     },
   },
   rotation: {

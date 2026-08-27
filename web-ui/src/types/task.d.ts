@@ -24,6 +24,12 @@ export interface Task {
   keyword_rules: string[];
   blacklist_keywords: string[];
   is_running: boolean;
+  execution_status?: 'idle' | 'queued' | 'running';
+}
+
+export interface TaskQueueState {
+  running: number[];
+  queued: number[];
 }
 
 export type TaskGenerationStatus = 'queued' | 'running' | 'completed' | 'failed';

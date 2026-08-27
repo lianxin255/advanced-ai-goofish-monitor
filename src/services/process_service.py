@@ -5,11 +5,10 @@
 
 import asyncio
 import contextlib
-import os
-import signal
-import sys
+from collections import deque
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Awaitable, Callable, Dict, TextIO
+from typing import Awaitable, Callable, Dict, List, TextIO
 
 from src.ai_handler import send_ntfy_notification
 from src.config import STATE_FILE
@@ -24,10 +23,22 @@ STOP_TIMEOUT_SECONDS = 20
 SPIDER_DEBUG_LIMIT_ENV = "SPIDER_DEBUG_LIMIT"
 DEFAULT_TASK_LOG_MAX_BYTES = 5 * 1024 * 1024
 LifecycleHook = Callable[[int], Awaitable[None] | None]
+QueueChangedHook = Callable[[], Awaitable[None] | None]
+
+
+@dataclass
+class _QueuedTask:
+    task_id: int
+    task_name: str
 
 
 class ProcessService:
-    """进程管理服务"""
+    """进程管理服务
+
+    任务执行改为串行队列：所有启动请求进入 FIFO 队列，由单个 worker 按顺序
+    取出并执行，同一时间只有一个任务在运行。这样可以避免多个爬虫子进程并发
+    抢占账号 / 触发风控。
+    """
 
     def __init__(self):
         self.processes: Dict[int, asyncio.subprocess.Process] = {}
@@ -41,15 +52,27 @@ class ProcessService:
         )
         self._on_started: LifecycleHook | None = None
         self._on_stopped: LifecycleHook | None = None
+        self._on_enqueued: LifecycleHook | None = None
+        self._on_queue_changed: QueueChangedHook | None = None
+        # 串行队列相关状态
+        self._queue: deque[_QueuedTask] = deque()
+        self._enqueued: Dict[int, _QueuedTask] = {}
+        self._queue_event = asyncio.Event()
+        self._worker_task: asyncio.Task | None = None
+        self._shutting_down = False
 
     def set_lifecycle_hooks(
         self,
         *,
         on_started: LifecycleHook | None = None,
         on_stopped: LifecycleHook | None = None,
+        on_enqueued: LifecycleHook | None = None,
+        on_queue_changed: QueueChangedHook | None = None,
     ) -> None:
         self._on_started = on_started
         self._on_stopped = on_stopped
+        self._on_enqueued = on_enqueued
+        self._on_queue_changed = on_queue_changed
 
     async def _invoke_hook(self, hook: LifecycleHook | None, task_id: int) -> None:
         if hook is None:
@@ -57,6 +80,22 @@ class ProcessService:
         result = hook(task_id)
         if asyncio.iscoroutine(result):
             await result
+
+    async def _broadcast_queue_changed(self) -> None:
+        if self._on_queue_changed is None:
+            return
+        result = self._on_queue_changed()
+        if asyncio.iscoroutine(result):
+            await result
+
+    def start(self) -> None:
+        """启动串行队列 worker（需在事件循环内调用）。"""
+        self._shutting_down = False
+        self._ensure_worker()
+
+    def _ensure_worker(self) -> None:
+        if self._worker_task is None or self._worker_task.done():
+            self._worker_task = asyncio.create_task(self._worker_loop())
 
     def _resolve_cookie_path(self, task_name: str) -> str | None:
         """Best-effort cookie/state path for a task."""
@@ -154,11 +193,24 @@ class ProcessService:
         self.task_names[task_id] = task_name
         self.exit_watchers[task_id] = asyncio.create_task(self._watch_process_exit(process))
 
-    async def start_task(self, task_id: int, task_name: str) -> bool:
-        """启动任务进程"""
+    def is_queued(self, task_id: int) -> bool:
+        """检查任务是否在串行队列中等待"""
+        return task_id in self._enqueued
+
+    def get_queue_state(self) -> dict:
+        """返回当前串行队列状态：running + 排队顺序"""
+        running = [tid for tid, proc in self.processes.items() if proc.returncode is None]
+        queued = [item.task_id for item in self._queue]
+        return {"running": running, "queued": queued}
+
+    async def enqueue_task(self, task_id: int, task_name: str) -> bool:
+        """将任务加入串行执行队列，返回是否成功入队"""
         await self._drain_finished_process(task_id)
         if self.is_running(task_id):
             logger.warning(f"任务 '{task_name}' (ID: {task_id}) 已在运行中")
+            return False
+        if self.is_queued(task_id):
+            logger.warning(f"任务 '{task_name}' (ID: {task_id}) 已在队列中")
             return False
 
         decision = self.failure_guard.should_skip_start(
@@ -169,6 +221,49 @@ class ProcessService:
             await self._notify_skip(task_name, decision)
             return False
 
+        item = _QueuedTask(task_id=task_id, task_name=task_name)
+        self._queue.append(item)
+        self._enqueued[task_id] = item
+        self._ensure_worker()
+        self._queue_event.set()
+        logger.info(f"任务 '{task_name}' (ID: {task_id}) 已加入串行执行队列")
+        await self._invoke_hook(self._on_enqueued, task_id)
+        await self._broadcast_queue_changed()
+        return True
+
+    async def _worker_loop(self) -> None:
+        """串行队列 worker：一次只执行一个任务"""
+        while not self._shutting_down:
+            if not self._queue:
+                self._queue_event.clear()
+                try:
+                    await self._queue_event.wait()
+                except asyncio.CancelledError:
+                    break
+                if self._shutting_down:
+                    break
+                continue
+
+            item = self._queue.popleft()
+            self._enqueued.pop(item.task_id, None)
+            await self._broadcast_queue_changed()
+            await self._run_queued(item)
+
+    async def _run_queued(self, item: _QueuedTask) -> None:
+        """实际运行队列中的一个任务，直到其进程退出再返回"""
+        task_id, task_name = item.task_id, item.task_name
+        await self._drain_finished_process(task_id)
+        if self.is_running(task_id):
+            return
+
+        decision = self.failure_guard.should_skip_start(
+            task_name,
+            cookie_path=self._resolve_cookie_path(task_name),
+        )
+        if decision.skip:
+            await self._notify_skip(task_name, decision)
+            return
+
         log_file_path = ""
         log_file_handle = None
         try:
@@ -177,12 +272,13 @@ class ProcessService:
         except Exception as exc:
             self._close_log_handle(log_file_handle)
             logger.error(f"启动任务 '{task_name}' 失败: {exc}")
-            return False
+            return
 
         self._register_runtime(task_id, task_name, process, log_file_path, log_file_handle)
         logger.info(f"启动任务 '{task_name}' (PID: {process.pid})")
         await self._invoke_hook(self._on_started, task_id)
-        return True
+        # 阻塞直到当前任务进程退出，保证串行
+        await self._await_exit_watcher(task_id)
 
     async def _notify_skip(self, task_name: str, decision) -> None:
         logger.warning(
@@ -214,6 +310,7 @@ class ProcessService:
             return
         self._cleanup_runtime(task_id, process)
         await self._invoke_hook(self._on_stopped, task_id)
+        await self._broadcast_queue_changed()
 
     def _find_task_id_by_process(self, process: asyncio.subprocess.Process) -> int | None:
         for task_id, current_process in self.processes.items():
@@ -251,7 +348,17 @@ class ProcessService:
             logger.warning(f"写入任务终止标记失败: {exc}")
 
     async def stop_task(self, task_id: int) -> bool:
-        """停止任务进程"""
+        """停止任务进程，或从串行队列中移除待执行任务"""
+        # 若任务还在队列中，直接从队列移除（取消排队）
+        if task_id in self._enqueued:
+            self._queue = deque(i for i in self._queue if i.task_id != task_id)
+            self._enqueued.pop(task_id, None)
+            self._queue_event.set()
+            logger.info(f"任务 ID {task_id} 已从串行队列中移除")
+            await self._invoke_hook(self._on_stopped, task_id)
+            await self._broadcast_queue_changed()
+            return True
+
         await self._drain_finished_process(task_id)
         process = self.processes.get(task_id)
         if process is None:
@@ -308,7 +415,17 @@ class ProcessService:
         await asyncio.shield(watcher)
 
     async def stop_all(self) -> None:
-        """停止所有任务进程"""
+        """停止所有任务进程并清空串行队列"""
+        self._shutting_down = True
+        self._queue.clear()
+        self._enqueued.clear()
+        self._queue_event.set()
+        if self._worker_task is not None:
+            self._worker_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._worker_task
+            self._worker_task = None
+
         task_ids = list(self.processes.keys())
         for task_id in task_ids:
             await self.stop_task(task_id)

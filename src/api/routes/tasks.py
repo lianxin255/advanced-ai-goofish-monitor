@@ -278,7 +278,7 @@ async def start_task(
     task_service: TaskService = Depends(get_task_service),
     process_service: ProcessService = Depends(get_process_service),
 ):
-    """启动单个任务"""
+    """启动单个任务（加入串行执行队列）"""
     task = await task_service.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务未找到")
@@ -286,19 +286,27 @@ async def start_task(
         raise HTTPException(status_code=400, detail="任务已被禁用，无法启动")
     if task.is_running:
         raise HTTPException(status_code=400, detail="任务已在运行中")
-    success = await process_service.start_task(task_id, task.task_name)
+    if process_service.is_queued(task_id):
+        raise HTTPException(status_code=400, detail="任务已在执行队列中")
+    success = await process_service.enqueue_task(task_id, task.task_name)
     if not success:
-        raise HTTPException(status_code=500, detail="启动任务失败")
-    return {"message": f"任务 '{task.task_name}' 已启动"}
+        raise HTTPException(status_code=500, detail="任务入队失败")
+    return {"message": f"任务 '{task.task_name}' 已加入执行队列"}
 @router.post("/stop/{task_id}", response_model=dict)
 async def stop_task(
     task_id: int,
     task_service: TaskService = Depends(get_task_service),
     process_service: ProcessService = Depends(get_process_service),
 ):
-    """停止单个任务"""
+    """停止单个任务（或将其从执行队列中移除）"""
     task = await task_service.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务未找到")
     await process_service.stop_task(task_id)
     return {"message": f"任务ID {task_id} 已发送停止信号"}
+@router.get("/queue", response_model=dict)
+async def get_task_queue(
+    process_service: ProcessService = Depends(get_process_service),
+):
+    """获取串行执行队列状态（运行中 + 排队顺序）"""
+    return process_service.get_queue_state()

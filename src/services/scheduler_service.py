@@ -98,13 +98,13 @@ class SchedulerService:
         logger.info("定时任务加载完成")
 
     async def _run_task(self, task_id: int, task_name: str):
-        """执行定时任务"""
-        logger.info(f"定时任务触发: 正在为任务 '{task_name}' 启动爬虫...")
+        """执行定时任务：加入串行队列，由队列 worker 顺序执行"""
+        logger.info(f"定时任务触发: 正在为任务 '{task_name}' 加入串行执行队列...")
         try:
-            await self.process_service.start_task(task_id, task_name)
+            await self.process_service.enqueue_task(task_id, task_name)
         except Exception as exc:
             # APScheduler 会把这里抛出的异常记录进它自己的内部日志（并触发
             # EVENT_JOB_ERROR），但那部分日志容易被忽略；这里显式记录一份，
             # 确保失败在应用日志里也能看到。
-            logger.error(f"任务 '{task_name}' (id={task_id}) 启动失败: {exc!r}")
+            logger.error(f"任务 '{task_name}' (id={task_id}) 入队失败: {exc!r}")
             raise

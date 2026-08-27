@@ -4,6 +4,7 @@ import type {
   TaskGenerateRequest,
   TaskGenerationJob,
   TaskUpdate,
+  TaskQueueState,
 } from '@/types/task.d.ts'
 import { http } from '@/lib/http'
 
@@ -47,4 +48,8 @@ export async function stopTask(taskId: number): Promise<void> {
 
 export async function deleteTask(taskId: number): Promise<void> {
   await http(`/api/tasks/${taskId}`, { method: 'DELETE' })
+}
+
+export async function getTaskQueue(): Promise<TaskQueueState> {
+  return await http('/api/tasks/queue')
 }

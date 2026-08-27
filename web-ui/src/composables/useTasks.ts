@@ -4,6 +4,7 @@ import type {
   TaskCreateResponse,
   TaskGenerateRequest,
   TaskUpdate,
+  TaskQueueState,
 } from '@/types/task.d.ts'
 import * as taskApi from '@/api/tasks'
 import { useWebSocket } from '@/composables/useWebSocket'
@@ -13,6 +14,7 @@ export function useTasks() {
   const isLoading = ref(false)
   const error = ref<Error | null>(null)
   const stoppingTaskIds = ref<Set<number>>(new Set())
+  const queue = ref<TaskQueueState>({ running: [], queued: [] })
   const { on } = useWebSocket()
 
   async function fetchTasks(options?: { silent?: boolean }) {
@@ -34,16 +36,43 @@ export function useTasks() {
     }
   }
 
+  async function fetchQueue() {
+    try {
+      queue.value = await taskApi.getTaskQueue()
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  // 根据队列状态计算某任务的执行状态（乐观更新之外的实时来源）
+  function resolveExecutionStatus(task: Task): 'idle' | 'queued' | 'running' {
+    if (task.execution_status) return task.execution_status
+    return task.is_running ? 'running' : 'idle'
+  }
+
+  function queuePosition(taskId: number): number {
+    const index = queue.value.queued.indexOf(taskId)
+    return index === -1 ? -1 : index + 1
+  }
+
   // Real-time updates
   on('tasks_updated', () => {
     fetchTasks({ silent: true })
   })
 
-  on('task_status_changed', (data: { id: number; is_running: boolean }) => {
+  on('task_status_changed', (data: { id: number; is_running: boolean; execution_status?: string }) => {
     const task = tasks.value.find((t) => t.id === data.id)
     if (task) {
       task.is_running = data.is_running
+      if (data.execution_status) {
+        task.execution_status = data.execution_status as Task['execution_status']
+      }
     }
+    fetchTasks({ silent: true })
+  })
+
+  on('task_queue_changed', (data: TaskQueueState) => {
+    queue.value = data
     fetchTasks({ silent: true })
   })
 
@@ -100,16 +129,20 @@ export function useTasks() {
   async function startTask(taskId: number) {
     isLoading.value = true
     const task = tasks.value.find((t) => t.id === taskId)
-    const previous = task?.is_running
+    const previousRunning = task?.is_running
+    const previousStatus = task?.execution_status
     if (task) {
-      task.is_running = true // 乐观更新：点击后立刻显示运行中
+      // 乐观更新：点击后立刻显示已入队（串行队列下不会马上运行）
+      task.execution_status = 'queued'
+      task.is_running = false
     }
     try {
       await taskApi.startTask(taskId)
-      // The websocket will update the status, but we can also optimistically update
+      await fetchQueue()
     } catch (e) {
-      if (task && previous !== undefined) {
-        task.is_running = previous
+      if (task) {
+        if (previousRunning !== undefined) task.is_running = previousRunning
+        if (previousStatus !== undefined) task.execution_status = previousStatus
       }
       if (e instanceof Error) error.value = e
       throw e
@@ -137,13 +170,20 @@ export function useTasks() {
   }
   
   // Load tasks when the composable is first used in a component
-  onMounted(fetchTasks)
+  onMounted(() => {
+    fetchTasks()
+    fetchQueue()
+  })
 
   return {
     tasks,
     isLoading,
     error,
+    queue,
     fetchTasks,
+    fetchQueue,
+    resolveExecutionStatus,
+    queuePosition,
     createTask,
     updateTask,
     removeTask,

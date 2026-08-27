@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { Task } from '@/types/task.d.ts'
+import type { Task, TaskQueueState } from '@/types/task.d.ts'
 import {
   Table,
   TableBody,
@@ -25,14 +25,18 @@ import {
   Layers,
   MapPin,
   RefreshCcw,
-  Search
+  Search,
+  ListOrdered
 } from 'lucide-vue-next'
 import { formatCountdown, formatNextRunAbsolute } from '@/lib/taskSchedule'
+
+type ExecStatus = 'idle' | 'queued' | 'running'
 
 interface Props {
   tasks: Task[]
   isLoading: boolean
   stoppingIds?: Set<number>
+  queue?: TaskQueueState
 }
 
 const props = defineProps<Props>()
@@ -53,6 +57,18 @@ onBeforeUnmount(() => {
     window.clearInterval(timer)
   }
 })
+
+const statusOf = (task: Task): ExecStatus => {
+  if (task.execution_status) return task.execution_status
+  return task.is_running ? 'running' : 'idle'
+}
+const isRunning = (task: Task) => statusOf(task) === 'running'
+const isQueued = (task: Task) => statusOf(task) === 'queued'
+const queuePositionOf = (task: Task) => {
+  const queued = props.queue?.queued ?? []
+  const index = queued.indexOf(task.id)
+  return index === -1 ? -1 : index + 1
+}
 
 const resolveAccountStrategyLabel = (task: Task) => {
   if (task.account_strategy === 'rotate') return t('tasks.table.accountRotate')
@@ -152,9 +168,13 @@ const emit = defineEmits<{
               />
               <Badge
                 variant="outline"
-                :class="task.is_running ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-500'"
+                :class="[
+                  isRunning(task) ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : isQueued(task) ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-slate-50 text-slate-500',
+                ]"
               >
-                {{ task.is_running ? t('common.running') : t('common.idle') }}
+                <ListOrdered v-if="isQueued(task)" class="mr-1 h-3 w-3" />
+                {{ isRunning(task) ? t('common.running') : isQueued(task) ? t('tasks.table.queued') : t('common.idle') }}
+                <span v-if="isQueued(task) && queuePositionOf(task) > 0" class="ml-1 opacity-70">#{{ queuePositionOf(task) }}</span>
               </Badge>
             </div>
           </div>
@@ -238,7 +258,7 @@ const emit = defineEmits<{
 
           <div class="mt-4 flex flex-wrap gap-2">
             <Button
-              v-if="!task.is_running"
+              v-if="!isRunning(task) && !isQueued(task)"
               size="sm"
               class="flex-1 min-w-[120px]"
               :class="task.enabled ? '' : 'pointer-events-none opacity-50'"
@@ -247,6 +267,19 @@ const emit = defineEmits<{
             >
               <Play class="mr-1 h-3.5 w-3.5 fill-current" />
               {{ t('tasks.table.start') }}
+            </Button>
+            <Button
+              v-else-if="isQueued(task)"
+              size="sm"
+              variant="outline"
+              class="flex-1 min-w-[120px] border-amber-200 text-amber-700 hover:bg-amber-50"
+              :disabled="isStopping(task.id)"
+              :aria-label="`${t('tasks.table.cancelQueue')} ${task.task_name}`"
+              @click="emit('stop-task', task.id)"
+            >
+              <Square v-if="!isStopping(task.id)" class="mr-1 h-3.5 w-3.5 fill-current" />
+              <RefreshCcw v-else class="mr-1 h-3.5 w-3.5 animate-spin" />
+              {{ isStopping(task.id) ? t('tasks.table.stopping') : t('tasks.table.cancelQueue') }}
             </Button>
             <Button
               v-else
@@ -332,10 +365,11 @@ const emit = defineEmits<{
                   @update:model-value="(val: boolean) => emit('toggle-enabled', task, val)"
                 />
                 <div class="flex items-center gap-1.5">
-                  <div :class="[ 'w-1.5 h-1.5 rounded-full shadow-sm', task.is_running ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300' ]"></div>
-                  <span :class="[ 'text-[9px] font-black tracking-widest uppercase', task.is_running ? 'text-emerald-600' : 'text-slate-400' ]">
-                    {{ task.is_running ? 'ACTIVE' : 'IDLE' }}
+                  <div :class="[ 'w-1.5 h-1.5 rounded-full shadow-sm', isRunning(task) ? 'bg-emerald-500 animate-pulse' : isQueued(task) ? 'bg-amber-500' : 'bg-slate-300' ]"></div>
+                  <span :class="[ 'text-[9px] font-black tracking-widest uppercase', isRunning(task) ? 'text-emerald-600' : isQueued(task) ? 'text-amber-600' : 'text-slate-400' ]">
+                    {{ isRunning(task) ? 'ACTIVE' : isQueued(task) ? 'QUEUED' : 'IDLE' }}
                   </span>
+                  <span v-if="isQueued(task) && queuePositionOf(task) > 0" class="text-[9px] font-bold text-amber-500/80">#{{ queuePositionOf(task) }}</span>
                 </div>
               </div>
             </TableCell>
@@ -464,7 +498,7 @@ const emit = defineEmits<{
             <TableCell class="px-6 align-middle text-right">
               <div class="flex justify-end items-center gap-2">
                   <Button
-                    v-if="!task.is_running"
+                    v-if="!isRunning(task) && !isQueued(task)"
                     size="sm" 
                     variant="default"
                     class="h-8 px-3 rounded-lg shadow-sm transition-all active:scale-95 text-white border-none"
@@ -474,6 +508,19 @@ const emit = defineEmits<{
                   >
                   <Play class="w-3 h-3 mr-1.5 fill-current" />
                   <span class="font-bold text-[11px]">{{ t('tasks.table.start') }}</span>
+                </Button>
+                  <Button
+                    v-else-if="isQueued(task)"
+                    size="sm"
+                    variant="outline"
+                    class="h-8 px-3 rounded-lg shadow-sm active:scale-95 border-amber-200 text-amber-700 hover:bg-amber-50"
+                    :disabled="isStopping(task.id)"
+                    :aria-label="`${t('tasks.table.cancelQueue')} ${task.task_name}`"
+                    @click="emit('stop-task', task.id)"
+                  >
+                  <Square v-if="!isStopping(task.id)" class="w-3 h-3 mr-1.5 fill-current" />
+                  <RefreshCcw v-else class="w-3 h-3 mr-1.5 animate-spin" />
+                  <span class="font-bold text-[11px]">{{ isStopping(task.id) ? t('tasks.table.stopping') : t('tasks.table.cancelQueue') }}</span>
                 </Button>
                   <Button
                     v-else
