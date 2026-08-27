@@ -7,11 +7,12 @@ name: Docker Image CI
 # 每次构建同时重建基础镜像（requirements 未变时走 GHA 层缓存，代价很小），
 # 保证应用镜像与基础镜像的 sha 标签一一对应、可回溯。
 
+# 触发注意：不要在同一个 push 事件里同时写 branches 和 tags 过滤器，
+# 该组合存在已知语义陷阱会导致分支推送永不触发（历史上本仓库因此零次自动运行）。
+# 现改为无 ref 过滤 + paths-ignore，由 job 级 if 守卫目标分支/标签。
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-    tags: ["v*"]
     paths-ignore:
       - "**.md"
       - ".gitignore"
@@ -31,6 +32,10 @@ permissions:
 
 jobs:
   build-base:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.ref == 'refs/heads/main' ||
+      startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     outputs:
       base_image: ${{ steps.prepare.outputs.base_image }}
