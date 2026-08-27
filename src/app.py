@@ -174,7 +174,10 @@ from fastapi.responses import JSONResponse
 async def read_root(request: Request):
     """提供 Vue 3 SPA 的主页面"""
     if os.path.exists("dist/index.html"):
-        return FileResponse("dist/index.html")
+        return FileResponse(
+            "dist/index.html",
+            headers={"Cache-Control": "no-cache"},
+        )
     else:
         return JSONResponse(
             status_code=500,
@@ -195,7 +198,10 @@ async def serve_spa(request: Request, full_path: str):
 
     # 其他所有路径都返回 index.html，让前端路由处理
     if os.path.exists("dist/index.html"):
-        return FileResponse("dist/index.html")
+        return FileResponse(
+            "dist/index.html",
+            headers={"Cache-Control": "no-cache"},
+        )
     else:
         return JSONResponse(
             status_code=500,
