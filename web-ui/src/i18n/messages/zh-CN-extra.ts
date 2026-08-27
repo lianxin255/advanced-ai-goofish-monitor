@@ -1,6 +1,8 @@
 const zhCNExtra = {
   tasks: {
     title: '任务管理',
+    startAll: '全部开始',
+    stopAll: '全部停止',
     toasts: {
       created: '任务创建成功',
       createFailed: '创建任务失败',
@@ -15,6 +17,8 @@ const zhCNExtra = {
       loadAccountsFailed: '加载账号列表失败',
       notFound: '未找到要删除的任务',
       progressFailed: '任务进度获取失败',
+      startAllDone: '已将所有可执行任务加入队列',
+      stopAllDone: '已停止全部任务并清空队列',
     },
     createDialog: { trigger: '+ 创建新任务', title: '创建新监控任务（AI 或关键词）', submit: '创建任务', submitting: '提交中...' },
     editDialog: { title: '编辑任务: {task}', save: '保存更改' },

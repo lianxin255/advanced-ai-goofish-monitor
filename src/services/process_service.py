@@ -5,6 +5,9 @@
 
 import asyncio
 import contextlib
+import os
+import signal
+import sys
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
@@ -235,13 +238,15 @@ class ProcessService:
         """串行队列 worker：一次只执行一个任务"""
         while not self._shutting_down:
             if not self._queue:
-                self._queue_event.clear()
                 try:
                     await self._queue_event.wait()
                 except asyncio.CancelledError:
                     break
-                if self._shutting_down:
-                    break
+            if self._shutting_down:
+                break
+            if not self._queue:
+                # 事件被触发但队列已空（空唤醒），清掉标志重新等待
+                self._queue_event.clear()
                 continue
 
             item = self._queue.popleft()
@@ -272,6 +277,9 @@ class ProcessService:
         except Exception as exc:
             self._close_log_handle(log_file_handle)
             logger.error(f"启动任务 '{task_name}' 失败: {exc}")
+            # 启动失败：把状态复位为空闲，避免任务永远卡在“排队中”
+            await self._invoke_hook(self._on_stopped, task_id)
+            await self._broadcast_queue_changed()
             return
 
         self._register_runtime(task_id, task_name, process, log_file_path, log_file_handle)
@@ -415,7 +423,21 @@ class ProcessService:
         await asyncio.shield(watcher)
 
     async def stop_all(self) -> None:
-        """停止所有任务进程并清空串行队列"""
+        """停止所有运行中的任务，并清空串行队列（保留 worker 继续待命）"""
+        queued_ids = list(self._enqueued.keys())
+        self._queue.clear()
+        self._enqueued.clear()
+        self._queue_event.set()
+        for task_id in queued_ids:
+            await self._invoke_hook(self._on_stopped, task_id)
+        await self._broadcast_queue_changed()
+
+        task_ids = list(self.processes.keys())
+        for task_id in task_ids:
+            await self.stop_task(task_id)
+
+    async def shutdown(self) -> None:
+        """应用关闭时调用：停止所有任务并终止 worker"""
         self._shutting_down = True
         self._queue.clear()
         self._enqueued.clear()

@@ -67,6 +67,37 @@ async def get_tasks(
     """获取所有任务"""
     tasks = await service.get_all_tasks()
     return serialize_tasks(tasks, scheduler_service)
+@router.get("/queue", response_model=dict)
+async def get_task_queue(
+    process_service: ProcessService = Depends(get_process_service),
+):
+    """获取串行执行队列状态（运行中 + 排队顺序）"""
+    return process_service.get_queue_state()
+@router.post("/start-all", response_model=dict)
+async def start_all_tasks(
+    task_service: TaskService = Depends(get_task_service),
+    process_service: ProcessService = Depends(get_process_service),
+):
+    """一键将全部已启用且空闲的任务加入串行执行队列"""
+    tasks = [t for t in await task_service.get_all_tasks() if t.enabled]
+    enqueued = 0
+    skipped = 0
+    for task in tasks:
+        if task.is_running or process_service.is_queued(task.id):
+            skipped += 1
+            continue
+        if await process_service.enqueue_task(task.id, task.task_name):
+            enqueued += 1
+        else:
+            skipped += 1
+    return {"message": f"已加入执行队列 {enqueued} 个任务", "enqueued": enqueued, "skipped": skipped}
+@router.post("/stop-all", response_model=dict)
+async def stop_all_tasks(
+    process_service: ProcessService = Depends(get_process_service),
+):
+    """一键停止所有运行中的任务并清空执行队列"""
+    await process_service.stop_all()
+    return {"message": "已停止全部任务并清空执行队列"}
 @router.get("/{task_id}", response_model=dict)
 async def get_task(
     task_id: int,
@@ -304,9 +335,3 @@ async def stop_task(
         raise HTTPException(status_code=404, detail="任务未找到")
     await process_service.stop_task(task_id)
     return {"message": f"任务ID {task_id} 已发送停止信号"}
-@router.get("/queue", response_model=dict)
-async def get_task_queue(
-    process_service: ProcessService = Depends(get_process_service),
-):
-    """获取串行执行队列状态（运行中 + 排队顺序）"""
-    return process_service.get_queue_state()

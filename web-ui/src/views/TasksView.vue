@@ -13,6 +13,7 @@ import { listAccounts, type AccountItem } from '@/api/accounts'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toast'
+import { Play, Square } from 'lucide-vue-next'
 import {
   Dialog,
   DialogContent,
@@ -33,6 +34,8 @@ const {
   updateTask,
   startTask,
   stopTask,
+  startAll,
+  stopAll,
   stoppingTaskIds,
 } = useTasks()
 const route = useRoute()
@@ -54,6 +57,19 @@ const taskToDelete = computed(() => {
   return tasks.value.find((task) => task.id === taskToDeleteId.value) || null
 })
 const editDefaults = computed(() => parseTaskFormDefaults(route.query))
+
+const hasRunnableTasks = computed(() =>
+  tasks.value.some(
+    (task) =>
+      task.enabled &&
+      !task.is_running &&
+      (task.execution_status || 'idle') !== 'queued' &&
+      (task.execution_status || 'idle') !== 'running',
+  ),
+)
+const hasActiveTasks = computed(
+  () => (queue.value.running?.length ?? 0) > 0 || (queue.value.queued?.length ?? 0) > 0,
+)
 
 function handleDeleteTask(taskId: number) {
   taskToDeleteId.value = taskId
@@ -189,6 +205,32 @@ async function handleToggleEnabled(task: Task, enabled: boolean) {
   }
 }
 
+async function handleStartAll() {
+  try {
+    await startAll()
+    toast({ title: t('tasks.toasts.startAllDone') })
+  } catch (e) {
+    toast({
+      title: t('tasks.toasts.startFailed'),
+      description: (e as Error).message,
+      variant: 'destructive',
+    })
+  }
+}
+
+async function handleStopAll() {
+  try {
+    await stopAll()
+    toast({ title: t('tasks.toasts.stopAllDone') })
+  } catch (e) {
+    toast({
+      title: t('tasks.toasts.stopFailed'),
+      description: (e as Error).message,
+      variant: 'destructive',
+    })
+  }
+}
+
 async function fetchAccountOptions() {
   try {
     accountOptions.value = await listAccounts()
@@ -210,7 +252,27 @@ onMounted(fetchAccountOptions)
       <h1 class="text-2xl font-bold text-gray-800">
         {{ t('tasks.title') }}
       </h1>
-      <TaskCreateDialog :account-options="accountOptions" @created="fetchTasks" />
+      <div class="flex items-center gap-2">
+        <Button
+          variant="outline"
+          :disabled="isLoading || hasRunnableTasks === false"
+          :title="t('tasks.startAll')"
+          @click="handleStartAll"
+        >
+          <Play class="mr-1 h-4 w-4" />
+          {{ t('tasks.startAll') }}
+        </Button>
+        <Button
+          variant="outline"
+          :disabled="isLoading || hasActiveTasks === false"
+          :title="t('tasks.stopAll')"
+          @click="handleStopAll"
+        >
+          <Square class="mr-1 h-4 w-4" />
+          {{ t('tasks.stopAll') }}
+        </Button>
+        <TaskCreateDialog :account-options="accountOptions" @created="fetchTasks" />
+      </div>
     </div>
 
     <!-- Edit Task Dialog -->

@@ -85,6 +85,20 @@ class LoginRequiredError(Exception):
 FAILURE_GUARD = FailureGuard()
 EDGE_DOCKER_WARNING_PRINTED = False
 
+# 检测到闲鱼反爬虫验证 (FAIL_SYS_USER_VALIDATE) 时采用指数退避重试，
+# 而不是一次性固定时长休眠后退出。退避序列约为 base * 2^(n-1)，并设上限。
+VALIDATE_BACKOFF_BASE_SECONDS = 5
+VALIDATE_BACKOFF_MAX_SECONDS = 300
+VALIDATE_MAX_RETRIES = 6
+
+
+def compute_validate_backoff_delay(attempt: int) -> int:
+    """根据重试次数计算指数退避时长（秒）：base * 2^(n-1)，并设上限。"""
+    return min(
+        VALIDATE_BACKOFF_BASE_SECONDS * (2 ** max(attempt - 1, 0)),
+        VALIDATE_BACKOFF_MAX_SECONDS,
+    )
+
 
 def _is_login_url(url: str) -> bool:
     if not url:
@@ -1087,40 +1101,56 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
 
                         detail_page = await context.new_page()
                         try:
-                            async with detail_page.expect_response(
-                                lambda r: DETAIL_API_URL_PATTERN in r.url, timeout=25000
-                            ) as detail_info:
-                                await detail_page.goto(
-                                    item_data["商品链接"],
-                                    wait_until="domcontentloaded",
-                                    timeout=25000,
-                                )
+                            detail_json = None
+                            for validate_attempt in range(1, VALIDATE_MAX_RETRIES + 1):
+                                async with detail_page.expect_response(
+                                    lambda r: DETAIL_API_URL_PATTERN in r.url, timeout=25000
+                                ) as detail_info:
+                                    await detail_page.goto(
+                                        item_data["商品链接"],
+                                        wait_until="domcontentloaded",
+                                        timeout=25000,
+                                    )
 
-                            detail_response = await detail_info.value
-                            if detail_response.ok:
-                                detail_json = await detail_response.json()
+                                detail_response = await detail_info.value
+                                if not detail_response.ok:
+                                    log_time("详情页响应非 200，跳过该商品。")
+                                    break
 
+                                candidate = await detail_response.json()
                                 ret_string = str(
-                                    await safe_get(detail_json, "ret", default=[])
+                                    await safe_get(candidate, "ret", default=[])
                                 )
                                 if "FAIL_SYS_USER_VALIDATE" in ret_string:
+                                    if validate_attempt < VALIDATE_MAX_RETRIES:
+                                        delay = compute_validate_backoff_delay(validate_attempt)
+                                        print(
+                                            "\n========== ANTI-SCRAPE VALIDATION (FAIL_SYS_USER_VALIDATE) =========="
+                                        )
+                                        print(
+                                            f"检测到闲鱼反爬虫验证，第 {validate_attempt}/{VALIDATE_MAX_RETRIES} 次，"
+                                            f"指数退避等待 {delay}s 后重试详情页..."
+                                        )
+                                        print(
+                                            "若长时间持续，请在浏览器中手动完成验证以恢复账号。"
+                                        )
+                                        await asyncio.sleep(delay)
+                                        continue
                                     print(
-                                        "\n==================== CRITICAL BLOCK DETECTED ===================="
+                                        "\n========== ANTI-SCRAPE VALIDATION (FAIL_SYS_USER_VALIDATE) =========="
                                     )
                                     print(
-                                        "检测到闲鱼反爬虫验证 (FAIL_SYS_USER_VALIDATE)，程序将终止。"
-                                    )
-                                    long_sleep_duration = random.randint(3, 60)
-                                    print(
-                                        f"为避免账户风险，将执行一次长时间休眠 ({long_sleep_duration} 秒) 后再退出..."
-                                    )
-                                    await asyncio.sleep(long_sleep_duration)
-                                    print("长时间休眠结束，现在将安全退出。")
-                                    print(
-                                        "==================================================================="
+                                        "已按指数退避重试多次仍被反爬虫验证拦截，安全退出。"
                                     )
                                     raise RiskControlError("FAIL_SYS_USER_VALIDATE")
 
+                                detail_json = candidate
+                                break
+
+                            if detail_json is None:
+                                # 详情页获取失败或被验证拦截（已重试耗尽），跳过该商品
+                                log_time("详情页未获取到，跳过该商品。")
+                            else:
                                 # 解析商品详情数据并更新 item_data
                                 item_do = await safe_get(
                                     detail_json, "data", "itemDO", default={}
@@ -1222,21 +1252,6 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
                                     "[反爬] 执行一次主要的随机延迟以模拟用户浏览间隔..."
                                 )
                                 await random_sleep(5, 10)
-                            else:
-                                print(
-                                    f"   错误: 获取商品详情API响应失败，状态码: {detail_response.status}"
-                                )
-                                if AI_DEBUG_MODE:
-                                    print(
-                                        f"--- [DETAIL DEBUG] FAILED RESPONSE from {item_data['商品链接']} ---"
-                                    )
-                                    try:
-                                        print(await detail_response.text())
-                                    except Exception as e:
-                                        print(f"无法读取响应内容: {e}")
-                                    print(
-                                        "----------------------------------------------------"
-                                    )
 
                         except PlaywrightTimeoutError:
                             print(f"   错误: 访问商品详情页或等待API响应超时。")

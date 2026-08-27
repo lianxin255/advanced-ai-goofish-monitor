@@ -72,8 +72,8 @@ export function useTasks() {
   })
 
   on('task_queue_changed', (data: TaskQueueState) => {
+    // 仅更新队列顺序，不要整表重新拉取，避免把正在运行的任务状态回退成“排队中”
     queue.value = data
-    fetchTasks({ silent: true })
   })
 
   async function createTask(data: TaskGenerateRequest): Promise<TaskCreateResponse> {
@@ -168,6 +168,28 @@ export function useTasks() {
       isLoading.value = false
     }
   }
+
+  async function startAll() {
+    error.value = null
+    try {
+      await taskApi.startAllTasks()
+      await fetchQueue()
+    } catch (e) {
+      if (e instanceof Error) error.value = e
+      throw e
+    }
+  }
+
+  async function stopAll() {
+    error.value = null
+    try {
+      await taskApi.stopAllTasks()
+      await fetchQueue()
+    } catch (e) {
+      if (e instanceof Error) error.value = e
+      throw e
+    }
+  }
   
   // Load tasks when the composable is first used in a component
   onMounted(() => {
@@ -189,6 +211,8 @@ export function useTasks() {
     removeTask,
     startTask,
     stopTask,
+    startAll,
+    stopAll,
     stoppingTaskIds,
   }
 }

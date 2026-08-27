@@ -1,6 +1,8 @@
 const enUSExtra = {
   tasks: {
     title: 'Tasks',
+    startAll: 'Start All',
+    stopAll: 'Stop All',
     toasts: {
       created: 'Task created successfully.',
       createFailed: 'Failed to create task.',
@@ -15,6 +17,8 @@ const enUSExtra = {
       loadAccountsFailed: 'Failed to load account list.',
       notFound: 'Task to delete was not found.',
       progressFailed: 'Failed to fetch task progress.',
+      startAllDone: 'All runnable tasks have been queued.',
+      stopAllDone: 'All tasks stopped and queue cleared.',
     },
     createDialog: { trigger: '+ New Task', title: 'Create Monitoring Task (AI or Keyword)', submit: 'Create Task', submitting: 'Submitting...' },
     editDialog: { title: 'Edit Task: {task}', save: 'Save Changes' },

@@ -53,3 +53,11 @@ export async function deleteTask(taskId: number): Promise<void> {
 export async function getTaskQueue(): Promise<TaskQueueState> {
   return await http('/api/tasks/queue')
 }
+
+export async function startAllTasks(): Promise<{ enqueued: number; skipped: number }> {
+  return await http('/api/tasks/start-all', { method: 'POST' })
+}
+
+export async function stopAllTasks(): Promise<void> {
+  await http('/api/tasks/stop-all', { method: 'POST' })
+}
