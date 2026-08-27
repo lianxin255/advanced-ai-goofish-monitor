@@ -25,6 +25,7 @@ export interface Task {
   blacklist_keywords: string[];
   is_running: boolean;
   execution_status?: 'idle' | 'queued' | 'running';
+  ai_title_screening?: boolean | null;
 }
 
 export interface TaskQueueState {
@@ -81,4 +82,5 @@ export interface TaskGenerateRequest {
   decision_mode?: 'ai' | 'keyword';
   keyword_rules?: string[];
   blacklist_keywords?: string[];
+  ai_title_screening?: boolean | null;
 }

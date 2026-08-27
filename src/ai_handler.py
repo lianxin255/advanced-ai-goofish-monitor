@@ -518,3 +518,66 @@ async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
                 continue
             else:
                 raise e
+
+
+async def screen_product_title(
+    title: str, keyword: str, requirements: str
+) -> tuple[bool, str]:
+    """轻量级标题预筛：用 AI 判断商品标题是否「根本不符合」要求。
+
+    返回 (match, reason)。任何异常、AI 未配置或缺少参数时返回 (True, "")，
+    即「不跳过」，确保预筛失败不会漏掉潜在目标商品。
+    """
+    if client is None:
+        return True, ""
+    if not title or not requirements:
+        return True, ""
+
+    system_prompt = (
+        "你是一个严格的商品预筛选器。用户会提供一个搜索关键词、一份「商品要求描述」"
+        "以及一条来自二手交易平台（闲鱼）的商品标题。\n"
+        "请仅根据标题判断：该商品是否「根本不符合」用户要求"
+        "（例如品类完全无关、明显不是所求物品、或属于明确排除的类型）。\n"
+        "注意：标题信息有限，只要不能断定「根本不符」，就应视为可能相关（match=true）。\n"
+        "只输出严格的 JSON，不要输出任何额外文字，格式为：\n"
+        '{"match": true/false, "reason": "简短中文理由"}'
+    )
+    user_text = (
+        f"搜索关键词：{keyword}\n"
+        f"商品要求描述：\n{requirements}\n\n"
+        f"待判断的商品标题：\n{title}\n\n"
+        "请判断该标题是否根本不符合要求，并只返回 JSON。"
+    )
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_text},
+    ]
+
+    api_mode = CHAT_COMPLETIONS_API_MODE
+    max_retries = 2
+    for attempt in range(max_retries):
+        try:
+            request_params = build_ai_request_params(
+                api_mode,
+                model=MODEL_NAME,
+                messages=messages,
+                temperature=0.0,
+                max_output_tokens=300,
+                enable_json_output=ENABLE_RESPONSE_FORMAT,
+            )
+            response = await create_ai_response_async(client, api_mode, request_params)
+            content = extract_ai_response_content(response)
+            parsed = parse_ai_response_json(content)
+            match_val = parsed.get("match")
+            if isinstance(match_val, str):
+                match_val = str(match_val).strip().lower() in {"true", "1", "是", "yes"}
+            match = bool(match_val)
+            reason = str(parsed.get("reason", ""))[:200]
+            return match, reason
+        except Exception as exc:  # noqa: BLE001
+            safe_print(f"   [AI标题预筛] 第{attempt + 1}次调用失败: {exc}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1)
+                continue
+            return True, ""
+    return True, ""

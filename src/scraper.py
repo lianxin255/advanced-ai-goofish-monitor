@@ -15,6 +15,7 @@ from playwright.async_api import (
 from src.ai_handler import (
     download_all_images,
     get_ai_analysis,
+    screen_product_title,
     send_ntfy_notification,
     cleanup_task_images,
 )
@@ -88,7 +89,7 @@ EDGE_DOCKER_WARNING_PRINTED = False
 # 检测到闲鱼反爬虫验证 (FAIL_SYS_USER_VALIDATE) 时采用指数退避重试，
 # 而不是一次性固定时长休眠后退出。退避序列约为 base * 2^(n-1)，并设上限。
 VALIDATE_BACKOFF_BASE_SECONDS = 5
-VALIDATE_BACKOFF_MAX_SECONDS = 300
+VALIDATE_BACKOFF_MAX_SECONDS = 7200
 VALIDATE_MAX_RETRIES = 6
 
 
@@ -316,6 +317,25 @@ async def _governed_ai_analysis(record: dict, image_paths: list, prompt_text: st
     if result:
         store_ai_result_cache(cache_key, result)
     return result
+
+
+def _get_title_screening_enabled(task_config: dict) -> bool:
+    """标题预筛开关：任务级优先，否则回退到环境变量。"""
+    task_value = task_config.get("ai_title_screening")
+    if isinstance(task_value, bool):
+        return task_value
+    if isinstance(task_value, str) and task_value.strip():
+        return str(task_value).strip().lower() in {"1", "true", "yes", "on"}
+    return _as_bool(os.getenv("AI_TITLE_SCREENING_ENABLED"), False)
+
+
+async def _screen_title_with_ai(
+    title: str, keyword: str, requirements: str
+) -> tuple[bool, str]:
+    """标题预筛（带全局 AI 并发闸门），返回 (match, reason)。"""
+    gate = GlobalAIConcurrencyGate(limit=_get_global_ai_concurrency_limit())
+    async with gate:
+        return await screen_product_title(title, keyword, requirements)
 
 
 def _default_context_options() -> dict:
@@ -547,6 +567,7 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
     min_price = task_config.get("min_price")
     max_price = task_config.get("max_price")
     ai_prompt_text = task_config.get("ai_prompt_text", "")
+    title_screening_enabled = _get_title_screening_enabled(task_config)
     analyze_images = _should_analyze_images(task_config)
     decision_mode = str(task_config.get("decision_mode", "ai")).strip().lower()
     if decision_mode not in {"ai", "keyword"}:
@@ -1093,10 +1114,28 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
                                 {"商品信息": item_data, "卖家信息": {}},
                                 task_blacklist_keywords,
                             )
-                            if matched_task_blacklist_keywords:
+                        if matched_task_blacklist_keywords:
+                            log_time(
+                                f"[页内进度 {i}/{total_items_on_page}] 商品 '{item_data['商品标题'][:20]}...' "
+                                f"命中任务黑名单关键词 {matched_task_blacklist_keywords}，已忽略。"
+                            )
+                            continue
+
+                        # AI 标题预筛：在访问详情页（昂贵）之前，用 AI 判断标题是否根本不符合要求，
+                        # 不符合则直接跳过，避免浪费详情抓取、图片下载与完整 AI 分析的性能。
+                        if title_screening_enabled and ai_prompt_text:
+                            screen_title = item_data.get("商品标题", "")
+                            try:
+                                matched, screen_reason = await _screen_title_with_ai(
+                                    screen_title, keyword, ai_prompt_text
+                                )
+                            except Exception as exc:  # noqa: BLE001
+                                matched, screen_reason = True, ""
+                                safe_print(f"   [AI标题预筛] 调用异常，按不跳过处理: {exc}")
+                            if not matched:
                                 log_time(
-                                    f"[页内进度 {i}/{total_items_on_page}] 商品 '{item_data['商品标题'][:20]}...' "
-                                    f"命中任务黑名单关键词 {matched_task_blacklist_keywords}，已忽略。"
+                                    f"[页内进度 {i}/{total_items_on_page}] 商品 '{screen_title[:20]}...' "
+                                    f"经 AI 标题预筛判定不符合要求（{screen_reason}），跳过。"
                                 )
                                 continue
 

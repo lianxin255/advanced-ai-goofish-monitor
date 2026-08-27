@@ -110,6 +110,7 @@ watch(() => [props.mode, props.initialData, props.defaultValues, props.defaultAc
         AUTO_ACCOUNT_VALUE,
       analyze_images: defaultValues.analyze_images ?? props.initialData.analyze_images ?? true,
       free_shipping: defaultValues.free_shipping ?? props.initialData.free_shipping ?? true,
+      ai_title_screening: defaultValues.ai_title_screening ?? props.initialData.ai_title_screening ?? false,
       new_publish_option:
         defaultValues.new_publish_option || props.initialData.new_publish_option || '__none__',
       region: defaultValues.region || props.initialData.region || '',
@@ -134,6 +135,7 @@ watch(() => [props.mode, props.initialData, props.defaultValues, props.defaultAc
       account_strategy: props.defaultAccount ? 'fixed' : 'auto',
       account_state_file: props.defaultAccount || AUTO_ACCOUNT_VALUE,
       free_shipping: true,
+      ai_title_screening: defaultValues.ai_title_screening ?? false,
       new_publish_option: '__none__',
       region: '',
       decision_mode: 'ai',
@@ -308,6 +310,16 @@ function handleSubmit() {
           <Switch id="analyze-images" v-model="form.analyze_images" />
           <p class="text-xs text-gray-500">
             {{ t('tasks.form.analyzeImagesHint') }}
+          </p>
+        </div>
+      </div>
+
+      <div v-if="form.decision_mode === 'ai'" class="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
+        <Label for="ai-title-screening" class="sm:text-right">{{ t('tasks.form.aiTitleScreening') }}</Label>
+        <div class="space-y-1 sm:col-span-3">
+          <Switch id="ai-title-screening" v-model="form.ai_title_screening" />
+          <p class="text-xs text-gray-500">
+            {{ t('tasks.form.aiTitleScreeningHint') }}
           </p>
         </div>
       </div>

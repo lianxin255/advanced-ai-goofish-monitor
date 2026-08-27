@@ -61,6 +61,8 @@ const zhCNExtra = {
       keywordDescriptionHint: '关键词模式下可留空；AI 模式下必填。',
       analyzeImages: '分析商品图片',
       analyzeImagesHint: '关闭后只分析商品文字描述和卖家资质，适合纯文本模型或节省 token。',
+      aiTitleScreening: 'AI 标题预筛',
+      aiTitleScreeningHint: '开启后，在抓取详情页之前先用 AI 判断商品标题是否根本不符合要求，不符合则直接跳过，节省详情抓取与完整分析的性能。',
       keywordRules: '关键词规则',
       keywordRulesHint: '单组 OR 逻辑：命中任一关键词即推荐。每行一个关键词，或使用逗号分隔；纯英数字关键词按完整词匹配。',
       keywordRulesPlaceholder: '示例：a7m4\n验货宝\n全画幅',

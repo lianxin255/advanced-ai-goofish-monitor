@@ -13,6 +13,19 @@ from src.infrastructure.persistence.sqlite_bootstrap import bootstrap_sqlite_sto
 from src.infrastructure.persistence.sqlite_connection import sqlite_connection
 
 
+def _coerce_optional_bool(value) -> Optional[bool]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in ("", "null", "none", "undefined"):
+        return None
+    return text in {"1", "true", "yes", "y", "on"}
+
+
 def _row_to_task(row) -> Task:
     payload = dict(row)
     payload["enabled"] = bool(payload["enabled"])
@@ -20,6 +33,7 @@ def _row_to_task(row) -> Task:
     payload["personal_only"] = bool(payload["personal_only"])
     payload["free_shipping"] = bool(payload["free_shipping"])
     payload["is_running"] = bool(payload["is_running"])
+    payload["ai_title_screening"] = _coerce_optional_bool(payload.get("ai_title_screening"))
     raw_status = payload.get("execution_status") or "idle"
     payload["execution_status"] = raw_status if raw_status in ("idle", "queued", "running") else "idle"
     payload["keyword_rules"] = json.loads(payload.pop("keyword_rules_json") or "[]")
@@ -96,14 +110,14 @@ class SqliteTaskRepository(TaskRepository):
                     ai_prompt_base_file, ai_prompt_criteria_file, account_state_file,
                     account_strategy, free_shipping, new_publish_option, region,
                     decision_mode, keyword_rules_json, is_running, blacklist_keywords_json,
-                    execution_status
+                    execution_status, ai_title_screening
                 ) VALUES (
                     :id, :task_name, :enabled, :keyword, :description, :analyze_images,
                     :max_pages, :personal_only, :min_price, :max_price, :cron,
                     :ai_prompt_base_file, :ai_prompt_criteria_file, :account_state_file,
                     :account_strategy, :free_shipping, :new_publish_option, :region,
                     :decision_mode, :keyword_rules_json, :is_running, :blacklist_keywords_json,
-                    :execution_status
+                    :execution_status, :ai_title_screening
                 )
                 """,
                 payload,
@@ -132,6 +146,9 @@ class SqliteTaskRepository(TaskRepository):
         values["personal_only"] = int(task.personal_only)
         values["free_shipping"] = int(task.free_shipping)
         values["is_running"] = int(task.is_running)
+        values["ai_title_screening"] = (
+            None if task.ai_title_screening is None else int(task.ai_title_screening)
+        )
         exec_status = task.execution_status
         values["execution_status"] = getattr(exec_status, "value", exec_status)
         values["keyword_rules_json"] = json.dumps(task.keyword_rules or [], ensure_ascii=False)

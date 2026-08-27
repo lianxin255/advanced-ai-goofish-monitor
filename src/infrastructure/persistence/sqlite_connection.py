@@ -45,7 +45,8 @@ SCHEMA_STATEMENTS = (
         keyword_rules_json TEXT NOT NULL,
         is_running INTEGER NOT NULL,
         blacklist_keywords_json TEXT NOT NULL DEFAULT '[]',
-        execution_status TEXT NOT NULL DEFAULT 'idle'
+        execution_status TEXT NOT NULL DEFAULT 'idle',
+        ai_title_screening INTEGER
     )
     """,
     """
@@ -166,6 +167,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     _migrate_result_items_status(conn)
     _migrate_tasks_blacklist_keywords(conn)
     _migrate_tasks_execution_status(conn)
+    _migrate_tasks_title_screening(conn)
     conn.commit()
 
 
@@ -188,6 +190,21 @@ def _migrate_tasks_execution_status(conn: sqlite3.Connection) -> None:
     )
     conn.execute(
         "INSERT OR REPLACE INTO app_metadata(key, value) VALUES ('migration:tasks_execution_status', 'done')"
+    )
+
+
+def _migrate_tasks_title_screening(conn: sqlite3.Connection) -> None:
+    """为 tasks 表添加 ai_title_screening 列（仅执行一次）。"""
+    row = conn.execute(
+        "SELECT value FROM app_metadata WHERE key = 'migration:tasks_title_screening'"
+    ).fetchone()
+    if row is not None:
+        return
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()]
+    if "ai_title_screening" not in cols:
+        conn.execute("ALTER TABLE tasks ADD COLUMN ai_title_screening INTEGER")
+    conn.execute(
+        "INSERT OR REPLACE INTO app_metadata(key, value) VALUES ('migration:tasks_title_screening', 'done')"
     )
 
 
