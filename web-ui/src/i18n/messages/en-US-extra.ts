@@ -63,6 +63,8 @@ const enUSExtra = {
       analyzeImagesHint: 'Disable this to analyze only text and seller quality, useful for text-only models or lower token usage.',
       aiTitleScreening: 'AI Title Pre-screening',
       aiTitleScreeningHint: 'Enabled by default. Every task screens each product title with AI before fetching the detail page; non-matching items are skipped to save detail fetching and full analysis. Uncheck to disable per task.',
+      notifyEnabled: 'Notify Push',
+      notifyEnabledHint: 'Enabled by default. Matching items are pushed to configured notification channels; push also requires notification channels enabled in system settings. Uncheck to disable notifications for this task.',
       keywordRules: 'Keyword Rules',
       keywordRulesHint: 'Single OR group: any matching keyword recommends the item. One keyword per line or comma-separated; alphanumeric keywords match whole words.',
       keywordRulesPlaceholder: 'Example: a7m4\nVerified Authentic\nFull Frame',
@@ -172,6 +174,14 @@ const enUSExtra = {
     save: 'Save Rotation Settings',
     account: { title: 'Account Rotation', description: 'Provide automatic account-pool switching for tasks.', stateDir: 'Account State Directory' },
     proxy: { title: 'Proxy Rotation', description: 'The proxy pool stays independently controlled and can stack with account rotation.', pool: 'Proxy Pool (comma separated)' },
+  },
+  browser: {
+    title: 'Browser Settings',
+    description: 'Control whether the scraper uses the system-installed browser or Playwright bundled Chromium.',
+    useSystemChrome: 'Use System Chrome',
+    useSystemChromeHint: 'When enabled, the scraper runs with the Windows-installed Chrome (channel="chrome"); when disabled it uses Playwright bundled Chromium.',
+    save: 'Save Browser Settings',
+    loading: 'Loading browser settings...',
   },
   accounts: {
     title: 'Goofish Accounts',

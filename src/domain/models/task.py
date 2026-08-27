@@ -147,6 +147,7 @@ class Task(BaseModel):
     is_running: bool = False
     execution_status: ExecutionStatus = ExecutionStatus.IDLE
     ai_title_screening: bool = True
+    notify_enabled: bool = True
 
     @model_validator(mode="before")
     @classmethod
@@ -203,6 +204,7 @@ class TaskCreate(BaseModel):
     keyword_rules: List[str] = Field(default_factory=list)
     blacklist_keywords: List[str] = Field(default_factory=list)
     ai_title_screening: bool = True
+    notify_enabled: bool = True
 
     @model_validator(mode="before")
     @classmethod
@@ -277,6 +279,7 @@ class TaskUpdate(BaseModel):
     keyword_rules: Optional[List[str]] = None
     blacklist_keywords: Optional[List[str]] = None
     ai_title_screening: Optional[bool] = None
+    notify_enabled: Optional[bool] = None
     is_running: Optional[bool] = None
     execution_status: Optional[str] = None
 
@@ -349,6 +352,7 @@ class TaskGenerateRequest(BaseModel):
     keyword_rules: List[str] = Field(default_factory=list)
     blacklist_keywords: List[str] = Field(default_factory=list)
     ai_title_screening: bool = True
+    notify_enabled: bool = True
 
     @model_validator(mode="before")
     @classmethod

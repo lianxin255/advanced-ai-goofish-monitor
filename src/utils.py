@@ -65,13 +65,23 @@ async def random_sleep(min_seconds: float, max_seconds: float):
     await asyncio.sleep(delay)
 
 
-def log_time(message: str, prefix: str = "") -> None:
-    """在日志前加上 YY-MM-DD HH:MM:SS 时间戳的简单打印。"""
+def log_time(message: str, prefix: str = "", level: str = "INFO") -> None:
+    """在日志前加上 YY-MM-DD HH:MM:SS 时间戳与等级（INFO/WARN/ERROR）的简单打印。"""
     try:
-        ts = datetime.now().strftime(' %Y-%m-%d %H:%M:%S')
+        ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     except Exception:
         ts = "--:--:--"
-    print(f"[{ts}] {prefix}{message}")
+    print(f"[{ts}] [{level}] {prefix}{message}")
+
+
+def log_warn(message: str, prefix: str = "") -> None:
+    """输出 WARN 级别日志（带时间戳）。"""
+    log_time(message, prefix=prefix, level="WARN")
+
+
+def log_error(message: str, prefix: str = "") -> None:
+    """输出 ERROR 级别日志（带时间戳）。"""
+    log_time(message, prefix=prefix, level="ERROR")
 
 
 def sanitize_filename(value: str) -> str:

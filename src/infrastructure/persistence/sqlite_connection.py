@@ -46,7 +46,8 @@ SCHEMA_STATEMENTS = (
         is_running INTEGER NOT NULL,
         blacklist_keywords_json TEXT NOT NULL DEFAULT '[]',
         execution_status TEXT NOT NULL DEFAULT 'idle',
-        ai_title_screening INTEGER
+        ai_title_screening INTEGER,
+        notify_enabled INTEGER
     )
     """,
     """
@@ -168,6 +169,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     _migrate_tasks_blacklist_keywords(conn)
     _migrate_tasks_execution_status(conn)
     _migrate_tasks_title_screening(conn)
+    _migrate_tasks_notify_enabled(conn)
     conn.commit()
 
 
@@ -205,6 +207,21 @@ def _migrate_tasks_title_screening(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE tasks ADD COLUMN ai_title_screening INTEGER")
     conn.execute(
         "INSERT OR REPLACE INTO app_metadata(key, value) VALUES ('migration:tasks_title_screening', 'done')"
+    )
+
+
+def _migrate_tasks_notify_enabled(conn: sqlite3.Connection) -> None:
+    """为 tasks 表添加 notify_enabled 列（仅执行一次）。"""
+    row = conn.execute(
+        "SELECT value FROM app_metadata WHERE key = 'migration:tasks_notify_enabled'"
+    ).fetchone()
+    if row is not None:
+        return
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()]
+    if "notify_enabled" not in cols:
+        conn.execute("ALTER TABLE tasks ADD COLUMN notify_enabled INTEGER")
+    conn.execute(
+        "INSERT OR REPLACE INTO app_metadata(key, value) VALUES ('migration:tasks_notify_enabled', 'done')"
     )
 
 

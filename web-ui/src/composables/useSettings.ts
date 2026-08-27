@@ -6,6 +6,7 @@ import type {
   NotificationTestResponse,
   AiSettings,
   RotationSettings,
+  BrowserSettings,
   SystemStatus
 } from '@/api/settings'
 
@@ -13,6 +14,7 @@ export function useSettings() {
   const notificationSettings = ref<NotificationSettings>({})
   const aiSettings = ref<AiSettings>({})
   const rotationSettings = ref<RotationSettings>({})
+  const browserSettings = ref<BrowserSettings>({})
   const systemStatus = ref<SystemStatus | null>(null)
   const globalBlacklistKeywords = ref<string[]>([])
   const isReady = ref(false)
@@ -25,16 +27,18 @@ export function useSettings() {
     isLoading.value = true
     error.value = null
     try {
-      const [notif, ai, rotation, status, blacklist] = await Promise.all([
+      const [notif, ai, rotation, browser, status, blacklist] = await Promise.all([
         settingsApi.getNotificationSettings(),
         settingsApi.getAiSettings(),
         settingsApi.getRotationSettings(),
+        settingsApi.getBrowserSettings(),
         settingsApi.getSystemStatus(),
         settingsApi.getGlobalBlacklist()
       ])
       notificationSettings.value = notif
       aiSettings.value = ai
       rotationSettings.value = rotation
+      browserSettings.value = browser
       systemStatus.value = status
       globalBlacklistKeywords.value = blacklist.keywords
     } catch (e) {
@@ -127,6 +131,18 @@ export function useSettings() {
     }
   }
 
+  async function saveBrowserSettings() {
+    isSaving.value = true
+    try {
+      await settingsApi.updateBrowserSettings(browserSettings.value)
+    } catch (e) {
+      if (e instanceof Error) error.value = e
+      throw e
+    } finally {
+      isSaving.value = false
+    }
+  }
+
   async function saveGlobalBlacklist(keywords: string[]) {
     isSaving.value = true
     try {
@@ -166,6 +182,7 @@ export function useSettings() {
     notificationSettings,
     aiSettings,
     rotationSettings,
+    browserSettings,
     systemStatus,
     globalBlacklistKeywords,
     isLoading,
@@ -177,6 +194,7 @@ export function useSettings() {
     testNotification,
     saveAiSettings,
     saveRotationSettings,
+    saveBrowserSettings,
     saveGlobalBlacklist,
     testAiConnection,
     refreshStatus,

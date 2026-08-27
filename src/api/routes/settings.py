@@ -235,6 +235,35 @@ async def update_rotation_settings(settings: RotationSettingsModel):
     return {"message": "轮换设置已成功更新"}
 
 
+class BrowserSettingsModel(BaseModel):
+    """浏览器相关设置"""
+
+    USE_SYSTEM_CHROME: Optional[bool] = None
+
+
+@router.get("/browser")
+async def get_browser_settings():
+    return {
+        "USE_SYSTEM_CHROME": _env_bool("USE_SYSTEM_CHROME", True),
+    }
+
+
+@router.put("/browser")
+async def update_browser_settings(settings: BrowserSettingsModel):
+    updates = {}
+    payload = model_dump(settings, exclude_unset=True)
+    for key, value in payload.items():
+        if isinstance(value, bool):
+            updates[key] = _normalize_bool_value(value)
+        else:
+            updates[key] = str(value)
+    success = env_manager.update_values(updates)
+    if not success:
+        raise HTTPException(status_code=500, detail="更新浏览器设置失败")
+    _reload_env()
+    return {"message": "浏览器设置已成功更新"}
+
+
 @router.get("/global-blacklist")
 async def get_global_blacklist():
     keywords = await load_global_blacklist_keywords()

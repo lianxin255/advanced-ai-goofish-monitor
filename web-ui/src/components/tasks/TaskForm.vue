@@ -111,6 +111,7 @@ watch(() => [props.mode, props.initialData, props.defaultValues, props.defaultAc
       analyze_images: defaultValues.analyze_images ?? props.initialData.analyze_images ?? true,
       free_shipping: defaultValues.free_shipping ?? props.initialData.free_shipping ?? true,
       ai_title_screening: defaultValues.ai_title_screening ?? props.initialData.ai_title_screening ?? true,
+      notify_enabled: defaultValues.notify_enabled ?? props.initialData.notify_enabled ?? true,
       new_publish_option:
         defaultValues.new_publish_option || props.initialData.new_publish_option || '__none__',
       region: defaultValues.region || props.initialData.region || '',
@@ -136,6 +137,7 @@ watch(() => [props.mode, props.initialData, props.defaultValues, props.defaultAc
       account_state_file: props.defaultAccount || AUTO_ACCOUNT_VALUE,
       free_shipping: true,
       ai_title_screening: defaultValues.ai_title_screening ?? true,
+      notify_enabled: defaultValues.notify_enabled ?? true,
       new_publish_option: '__none__',
       region: '',
       decision_mode: 'ai',
@@ -320,6 +322,16 @@ function handleSubmit() {
           <Switch id="ai-title-screening" v-model="form.ai_title_screening" />
           <p class="text-xs text-gray-500">
             {{ t('tasks.form.aiTitleScreeningHint') }}
+          </p>
+        </div>
+      </div>
+
+      <div class="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
+        <Label for="notify-enabled" class="sm:text-right">{{ t('tasks.form.notifyEnabled') }}</Label>
+        <div class="space-y-1 sm:col-span-3">
+          <Switch id="notify-enabled" v-model="form.notify_enabled" />
+          <p class="text-xs text-gray-500">
+            {{ t('tasks.form.notifyEnabledHint') }}
           </p>
         </div>
       </div>

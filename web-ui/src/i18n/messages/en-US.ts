@@ -202,6 +202,7 @@ const enUS = {
     tabs: {
       ai: 'AI Model',
       rotation: 'Rotation',
+      browser: 'Browser',
       blacklist: 'Global Blacklist',
       notifications: 'Notifications',
       status: 'System Status',
@@ -225,6 +226,7 @@ const enUS = {
       testFailed: 'AI connection test failed.',
     },
     rotation: { saved: 'Rotation settings saved.', saveFailed: 'Failed to save rotation settings.' },
+    browser: { saved: 'Browser settings saved.', saveFailed: 'Failed to save browser settings.' },
     blacklist: {
       title: 'Global Crawl Blacklist',
       description: 'Items matching these keywords are ignored during crawling itself (no detail fetch, no save, no notification), across every task.',

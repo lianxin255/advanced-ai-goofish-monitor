@@ -202,6 +202,7 @@ const zhCN = {
     tabs: {
       ai: 'AI 模型',
       rotation: 'IP 轮换',
+      browser: '浏览器',
       blacklist: '全局黑名单',
       notifications: '通知推送',
       status: '系统状态',
@@ -225,6 +226,7 @@ const zhCN = {
       testFailed: 'AI 连接测试失败',
     },
     rotation: { saved: '轮换设置已保存', saveFailed: '轮换设置保存失败' },
+    browser: { saved: '浏览器设置已保存', saveFailed: '浏览器设置保存失败' },
     blacklist: {
       title: '全局爬取黑名单',
       description: '命中这些关键词的商品，在爬取阶段就会被直接忽略（不获取详情、不保存、不通知），对所有任务生效。',

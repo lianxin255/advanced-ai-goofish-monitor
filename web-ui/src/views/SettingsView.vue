@@ -15,6 +15,7 @@ import { toast } from '@/components/ui/toast'
 import { getPromptContent, listPrompts, updatePrompt } from '@/api/prompts'
 import NotificationSettingsPanel from '@/components/settings/NotificationSettingsPanel.vue'
 import RotationSettingsPanel from '@/components/settings/RotationSettingsPanel.vue'
+import BrowserSettingsPanel from '@/components/settings/BrowserSettingsPanel.vue'
 import GlobalBlacklistPanel from '@/components/settings/GlobalBlacklistPanel.vue'
 const { t } = useI18n()
 
@@ -22,6 +23,7 @@ const {
   notificationSettings,
   aiSettings,
   rotationSettings,
+  browserSettings,
   systemStatus,
   globalBlacklistKeywords,
   isLoading,
@@ -33,13 +35,14 @@ const {
   testNotification,
   saveAiSettings,
   saveRotationSettings,
+  saveBrowserSettings,
   saveGlobalBlacklist,
   testAiConnection
 } = useSettings()
 
 const activeTab = ref('ai')
 const route = useRoute()
-const validTabs = new Set(['notifications', 'ai', 'rotation', 'blacklist', 'status', 'prompts'])
+const validTabs = new Set(['notifications', 'ai', 'rotation', 'browser', 'blacklist', 'status', 'prompts'])
 
 const promptFiles = ref<string[]>([])
 const selectedPrompt = ref<string | null>(null)
@@ -93,6 +96,15 @@ async function handleSaveRotation() {
     notifySuccess(t('settings.rotation.saved'))
   } catch (e) {
     notifyError(t('settings.rotation.saveFailed'), (e as Error).message)
+  }
+}
+
+async function handleSaveBrowser() {
+  try {
+    await saveBrowserSettings()
+    notifySuccess(t('settings.browser.saved'))
+  } catch (e) {
+    notifyError(t('settings.browser.saveFailed'), (e as Error).message)
   }
 }
 
@@ -201,8 +213,9 @@ watch(selectedPrompt, async (value) => {
     <Tabs v-model="activeTab" class="w-full">
       <TabsList class="mb-4 flex w-full flex-nowrap justify-start gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1">
         <TabsTrigger class="shrink-0" value="ai">{{ t('settings.tabs.ai') }}</TabsTrigger>
-        <TabsTrigger class="shrink-0" value="rotation">{{ t('settings.tabs.rotation') }}</TabsTrigger>
-        <TabsTrigger class="shrink-0" value="blacklist">{{ t('settings.tabs.blacklist') }}</TabsTrigger>
+      <TabsTrigger class="shrink-0" value="rotation">{{ t('settings.tabs.rotation') }}</TabsTrigger>
+      <TabsTrigger class="shrink-0" value="browser">{{ t('settings.tabs.browser') }}</TabsTrigger>
+      <TabsTrigger class="shrink-0" value="blacklist">{{ t('settings.tabs.blacklist') }}</TabsTrigger>
         <TabsTrigger class="shrink-0" value="notifications">{{ t('settings.tabs.notifications') }}</TabsTrigger>
         <TabsTrigger class="shrink-0" value="status">{{ t('settings.tabs.status') }}</TabsTrigger>
         <TabsTrigger class="shrink-0" value="prompts">{{ t('settings.tabs.prompts') }}</TabsTrigger>
@@ -257,6 +270,16 @@ watch(selectedPrompt, async (value) => {
           :is-ready="isReady"
           :is-saving="isSaving"
           @save="handleSaveRotation"
+        />
+      </TabsContent>
+
+      <!-- Browser Tab -->
+      <TabsContent value="browser">
+        <BrowserSettingsPanel
+          :settings="browserSettings"
+          :is-ready="isReady"
+          :is-saving="isSaving"
+          @save="handleSaveBrowser"
         />
       </TabsContent>
 

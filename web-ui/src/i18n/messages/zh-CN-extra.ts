@@ -63,6 +63,8 @@ const zhCNExtra = {
       analyzeImagesHint: '关闭后只分析商品文字描述和卖家资质，适合纯文本模型或节省 token。',
       aiTitleScreening: 'AI 标题预筛',
       aiTitleScreeningHint: '默认开启。所有任务执行时都会先用 AI 判断商品标题是否根本不符合要求，不符合则直接跳过，节省详情抓取与完整分析的性能。如需关闭可取消勾选。',
+      notifyEnabled: '通知推送',
+      notifyEnabledHint: '默认开启。命中商品后会向已配置的通知渠道推送；真正推送还需在系统设置中启用通知渠道。取消勾选则本任务不推送。',
       keywordRules: '关键词规则',
       keywordRulesHint: '单组 OR 逻辑：命中任一关键词即推荐。每行一个关键词，或使用逗号分隔；纯英数字关键词按完整词匹配。',
       keywordRulesPlaceholder: '示例：a7m4\n验货宝\n全画幅',
@@ -172,6 +174,14 @@ const zhCNExtra = {
     save: '保存轮换设置',
     account: { title: '账号轮换', description: '为任务提供自动账号池切换。', stateDir: '账号目录' },
     proxy: { title: '代理轮换', description: '代理池保持独立控制，和账号轮换可以叠加。', pool: '代理池（逗号分隔）' },
+  },
+  browser: {
+    title: '浏览器设置',
+    description: '控制爬虫使用系统已安装的浏览器还是 Playwright 自带的 Chromium。',
+    useSystemChrome: '使用系统 Chrome',
+    useSystemChromeHint: '启用后，爬虫将使用 Windows 已安装的 Chrome 浏览器运行（channel="chrome"）；关闭则使用 Playwright 自带的 Chromium 环境。',
+    save: '保存浏览器设置',
+    loading: '正在加载浏览器配置...',
   },
   accounts: {
     title: '闲鱼账号管理',

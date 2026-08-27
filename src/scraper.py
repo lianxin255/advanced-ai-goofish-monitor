@@ -27,6 +27,7 @@ from src.config import (
     RUNNING_IN_DOCKER,
     SKIP_AI_ANALYSIS,
     STATE_FILE,
+    USE_SYSTEM_CHROME,
 )
 from src.parsers import (
     _parse_search_results_json,
@@ -38,7 +39,9 @@ from src.parsers import (
 from src.utils import (
     format_registration_days,
     get_link_unique_key,
+    log_error,
     log_time,
+    log_warn,
     random_sleep,
     safe_get,
     save_to_jsonl,
@@ -79,6 +82,14 @@ class RiskControlError(Exception):
     pass
 
 
+class AccountRotationNeeded(Exception):
+    """验证触发时请求在外层循环中切换账号后重试。"""
+
+    def __init__(self, account_path: str):
+        super().__init__(f"validation triggered account rotation: {account_path}")
+        self.account_path = account_path
+
+
 class LoginRequiredError(Exception):
     """Raised when Goofish redirects to the passport/mini_login flow."""
 
@@ -101,6 +112,26 @@ def compute_validate_backoff_delay(attempt: int) -> int:
     )
 
 
+def _validation_should_rotate(
+    validate_attempt: int,
+    rotation_enabled: bool,
+    allow_rotation: bool,
+    current_path: Optional[str],
+    candidate_path: Optional[str],
+) -> bool:
+    """首次验证触发且开启账号轮换、且有可切换的其他账号时，优先尝试轮换。
+
+    轮换后若仍被拦截，则由调用方的指数退避逻辑处理。
+    """
+    if validate_attempt != 1 or not rotation_enabled or not allow_rotation:
+        return False
+    if not candidate_path:
+        return False
+    if current_path and candidate_path == current_path:
+        return False
+    return True
+
+
 def _is_login_url(url: str) -> bool:
     if not url:
         return False
@@ -108,7 +139,14 @@ def _is_login_url(url: str) -> bool:
     return "passport.goofish.com" in lowered or "mini_login" in lowered
 
 
-def _resolve_browser_channel() -> str:
+def _resolve_browser_channel() -> Optional[str]:
+    """解析浏览器启动 channel。
+
+    - Docker 环境使用 Playwright 自带的 Chromium（更稳定）。
+    - 配置了 LOGIN_IS_EDGE 时使用系统 Edge。
+    - 开启 USE_SYSTEM_CHROME 时使用系统已安装的 Chrome（channel="chrome"），
+      否则使用 Playwright 自带的 Chromium（返回 None）。
+    """
     global EDGE_DOCKER_WARNING_PRINTED
     if RUNNING_IN_DOCKER:
         if LOGIN_IS_EDGE and not EDGE_DOCKER_WARNING_PRINTED:
@@ -118,7 +156,11 @@ def _resolve_browser_channel() -> str:
             )
             EDGE_DOCKER_WARNING_PRINTED = True
         return "chromium"
-    return "msedge" if LOGIN_IS_EDGE else "chrome"
+    if LOGIN_IS_EDGE:
+        return "msedge"
+    if USE_SYSTEM_CHROME:
+        return "chrome"
+    return None
 
 
 def _should_analyze_images(task_config: dict) -> bool:
@@ -667,7 +709,11 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
         picked = proxy_pool.pick_random()
         return picked or selected_proxy
 
-    async def _run_scrape_attempt(state_file: str, proxy_server: Optional[str]) -> int:
+    async def _run_scrape_attempt(
+        state_file: str,
+        proxy_server: Optional[str],
+        allow_validation_rotation: bool = True,
+    ) -> int:
         processed_item_count = 0
         stop_scraping = False
 
@@ -726,6 +772,13 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
             seller_profile_cache = SellerProfileCache(
                 ttl_seconds=_get_seller_profile_cache_ttl(task_config)
             )
+
+            async def _task_notifier(item_data: dict, reason: str):
+                # 任务级通知开关：关闭后该任务命中商品不再推送（系统通知仍需全局开启）
+                if not _as_bool(task_config.get("notify_enabled"), True):
+                    return {}
+                return await _cross_task_deduped_notifier(item_data, reason)
+
             analysis_dispatcher = ItemAnalysisDispatcher(
                 concurrency=_get_ai_analysis_concurrency(task_config),
                 skip_ai_analysis=SKIP_AI_ANALYSIS,
@@ -735,7 +788,7 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
                 ),
                 image_downloader=download_all_images,
                 ai_analyzer=_governed_ai_analysis,
-                notifier=_cross_task_deduped_notifier,
+                notifier=_task_notifier,
                 saver=save_to_jsonl,
             )
 
@@ -824,7 +877,7 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
                     print(
                         "\n==================== CRITICAL BLOCK DETECTED ===================="
                     )
-                    print("检测到闲鱼反爬虫验证弹窗 (baxia-dialog)，无法继续操作。")
+                    log_error("检测到闲鱼反爬虫验证弹窗 (baxia-dialog)，无法继续操作。")
                     print("这通常是因为操作过于频繁或被识别为机器人。")
                     print("建议：")
                     print("1. 停止脚本一段时间再试。")
@@ -846,7 +899,7 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
                     print(
                         "\n==================== CRITICAL BLOCK DETECTED ===================="
                     )
-                    print(
+                    log_error(
                         "检测到闲鱼反爬虫验证弹窗 (J_MIDDLEWARE_FRAME_WIDGET)，无法继续操作。"
                     )
                     print("这通常是因为操作过于频繁或被识别为机器人。")
@@ -1112,6 +1165,7 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
                                 )
                                 continue
 
+                        matched_task_blacklist_keywords = []
                         if task_blacklist_keywords:
                             matched_task_blacklist_keywords = match_blacklist_keywords(
                                 {"商品信息": item_data, "卖家信息": {}},
@@ -1172,11 +1226,32 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
                                 )
                                 if "FAIL_SYS_USER_VALIDATE" in ret_string:
                                     if validate_attempt < VALIDATE_MAX_RETRIES:
+                                        # 首次触发且开启账号轮换：优先尝试切换账号，而非直接退避
+                                        candidate = _select_account(force_new=True)
+                                        if _validation_should_rotate(
+                                            validate_attempt,
+                                            rotation_settings["account_enabled"],
+                                            allow_validation_rotation,
+                                            selected_account.value if selected_account else None,
+                                            candidate.value if candidate else None,
+                                        ):
+                                            account_pool.mark_bad(
+                                                selected_account,
+                                                "FAIL_SYS_USER_VALIDATE",
+                                            )
+                                            print(
+                                                "\n========== ANTI-SCRAPE VALIDATION (FAIL_SYS_USER_VALIDATE) =========="
+                                            )
+                                            log_warn(
+                                                f"检测到闲鱼反爬虫验证，第 {validate_attempt}/{VALIDATE_MAX_RETRIES} 次，"
+                                                f"尝试轮换账号 ({candidate.value}) 后重试详情页..."
+                                            )
+                                            raise AccountRotationNeeded(candidate.value)
                                         delay = compute_validate_backoff_delay(validate_attempt)
                                         print(
                                             "\n========== ANTI-SCRAPE VALIDATION (FAIL_SYS_USER_VALIDATE) =========="
                                         )
-                                        print(
+                                        log_warn(
                                             f"检测到闲鱼反爬虫验证，第 {validate_attempt}/{VALIDATE_MAX_RETRIES} 次，"
                                             f"指数退避等待 {delay}s 后重试详情页..."
                                         )
@@ -1188,7 +1263,7 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
                                     print(
                                         "\n========== ANTI-SCRAPE VALIDATION (FAIL_SYS_USER_VALIDATE) =========="
                                     )
-                                    print(
+                                    log_error(
                                         "已按指数退避重试多次仍被反爬虫验证拦截，安全退出。"
                                     )
                                     raise RiskControlError("FAIL_SYS_USER_VALIDATE")
@@ -1398,23 +1473,30 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
         cleanup_task_images(task_config.get("task_name", "default"))
         return 0
 
+    validation_rotated = False
+    rotated_account_path: Optional[str] = None
     for attempt in range(1, attempt_limit + 1):
         if attempt == 1:
             selected_account = _select_account()
             selected_proxy = _select_proxy()
         else:
-            if (
-                rotation_settings["account_enabled"]
-                and rotation_settings["account_mode"] == "on_failure"
-            ):
-                account_pool.mark_bad(selected_account, last_error)
-                selected_account = _select_account(force_new=True)
-            if (
-                rotation_settings["proxy_enabled"]
-                and rotation_settings["proxy_mode"] == "on_failure"
-            ):
-                proxy_pool.mark_bad(selected_proxy, last_error)
-                selected_proxy = _select_proxy(force_new=True)
+            if rotated_account_path is not None:
+                # 由验证触发导致的账号轮换：直接使用指定账号，避免二次轮换
+                selected_account = RotationItem(value=rotated_account_path)
+                rotated_account_path = None
+            else:
+                if (
+                    rotation_settings["account_enabled"]
+                    and rotation_settings["account_mode"] == "on_failure"
+                ):
+                    account_pool.mark_bad(selected_account, last_error)
+                    selected_account = _select_account(force_new=True)
+                if (
+                    rotation_settings["proxy_enabled"]
+                    and rotation_settings["proxy_mode"] == "on_failure"
+                ):
+                    proxy_pool.mark_bad(selected_proxy, last_error)
+                    selected_proxy = _select_proxy(force_new=True)
 
         if rotation_settings["account_enabled"] and not selected_account:
             last_error = "未找到可用的登录状态文件，无法继续执行任务。"
@@ -1438,31 +1520,42 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
             print(f"IP 轮换：使用代理 {proxy_server}")
 
         try:
-            processed_item_count += await _run_scrape_attempt(state_path, proxy_server)
+            processed_item_count += await _run_scrape_attempt(
+                state_path, proxy_server, allow_validation_rotation=not validation_rotated
+            )
             last_error = ""
         except LoginRequiredError as e:
             last_error = str(e)
             last_error_immediate_pause = True
-            print(f"检测到登录失效/重定向: {e}")
+            log_error(f"检测到登录失效/重定向: {e}")
             break
+        except AccountRotationNeeded as e:
+            last_error = f"验证触发，已轮换账号重试: {e.account_path}"
+            last_error_immediate_pause = False
+            log_warn(last_error)
+            # 标记已轮换：后续同一任务内的验证直接走指数退避；
+            # 外层循环将用新账号重跑本次任务。
+            validation_rotated = True
+            rotated_account_path = e.account_path
+            continue
         except RiskControlError as e:
             last_error = str(e)
             last_error_immediate_pause = True
-            print(f"检测到风控或验证触发: {e}")
+            log_error(f"检测到风控或验证触发: {e}")
             # 风控验证通常不是简单轮换能解决的，避免无意义重试。
             break
         except Exception as e:
             last_error = f"{type(e).__name__}: {e}"
             last_error_immediate_pause = False
-            print(f"本次尝试失败: {last_error}")
+            log_error(f"本次尝试失败: {last_error}")
             if attempt < attempt_limit:
-                print("将尝试轮换账号/IP 后重试...")
+                log_warn("将尝试轮换账号/IP 后重试...")
             continue
 
         try:
             FAILURE_GUARD.record_success(task_name_for_guard)
         except Exception as e:
-            print(f"[FailureGuard] 记录任务成功状态失败(不影响本次抓取结果): {e}")
+            log_warn(f"[FailureGuard] 记录任务成功状态失败(不影响本次抓取结果): {e}")
         break
 
     if last_error:

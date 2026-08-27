@@ -101,6 +101,10 @@ export interface RotationSettings {
   PROXY_BLACKLIST_TTL?: number
 }
 
+export interface BrowserSettings {
+  USE_SYSTEM_CHROME?: boolean
+}
+
 export interface SystemStatus {
   scraper_running: boolean
   running_task_ids?: number[]
@@ -174,6 +178,18 @@ export async function getRotationSettings(): Promise<RotationSettings> {
 
 export async function updateRotationSettings(settings: RotationSettings): Promise<void> {
   await http('/api/settings/rotation', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings)
+  })
+}
+
+export async function getBrowserSettings(): Promise<BrowserSettings> {
+  return await http('/api/settings/browser')
+}
+
+export async function updateBrowserSettings(settings: BrowserSettings): Promise<void> {
+  await http('/api/settings/browser', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(settings)

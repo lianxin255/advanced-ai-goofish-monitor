@@ -34,6 +34,7 @@ def _row_to_task(row) -> Task:
     payload["free_shipping"] = bool(payload["free_shipping"])
     payload["is_running"] = bool(payload["is_running"])
     payload["ai_title_screening"] = _coerce_optional_bool(payload.get("ai_title_screening"), default=True)
+    payload["notify_enabled"] = _coerce_optional_bool(payload.get("notify_enabled"), default=True)
     raw_status = payload.get("execution_status") or "idle"
     payload["execution_status"] = raw_status if raw_status in ("idle", "queued", "running") else "idle"
     payload["keyword_rules"] = json.loads(payload.pop("keyword_rules_json") or "[]")
@@ -110,14 +111,14 @@ class SqliteTaskRepository(TaskRepository):
                     ai_prompt_base_file, ai_prompt_criteria_file, account_state_file,
                     account_strategy, free_shipping, new_publish_option, region,
                     decision_mode, keyword_rules_json, is_running, blacklist_keywords_json,
-                    execution_status, ai_title_screening
+                    execution_status, ai_title_screening, notify_enabled
                 ) VALUES (
                     :id, :task_name, :enabled, :keyword, :description, :analyze_images,
                     :max_pages, :personal_only, :min_price, :max_price, :cron,
                     :ai_prompt_base_file, :ai_prompt_criteria_file, :account_state_file,
                     :account_strategy, :free_shipping, :new_publish_option, :region,
                     :decision_mode, :keyword_rules_json, :is_running, :blacklist_keywords_json,
-                    :execution_status, :ai_title_screening
+                    :execution_status, :ai_title_screening, :notify_enabled
                 )
                 """,
                 payload,
@@ -148,6 +149,9 @@ class SqliteTaskRepository(TaskRepository):
         values["is_running"] = int(task.is_running)
         values["ai_title_screening"] = (
             None if task.ai_title_screening is None else int(task.ai_title_screening)
+        )
+        values["notify_enabled"] = (
+            None if task.notify_enabled is None else int(task.notify_enabled)
         )
         exec_status = task.execution_status
         values["execution_status"] = getattr(exec_status, "value", exec_status)

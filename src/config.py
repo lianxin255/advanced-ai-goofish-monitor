@@ -60,6 +60,7 @@ PCURL_TO_MOBILE = notification_settings.pcurl_to_mobile
 RUN_HEADLESS = scraper_settings.run_headless
 LOGIN_IS_EDGE = scraper_settings.login_is_edge
 RUNNING_IN_DOCKER = scraper_settings.running_in_docker
+USE_SYSTEM_CHROME = scraper_settings.use_system_chrome
 AI_DEBUG_MODE = ai_settings.debug_mode
 SKIP_AI_ANALYSIS = ai_settings.skip_analysis
 ENABLE_THINKING = ai_settings.enable_thinking

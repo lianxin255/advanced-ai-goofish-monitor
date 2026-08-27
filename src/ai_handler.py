@@ -69,15 +69,20 @@ RATE_LIMIT_BASE_DELAY_SECONDS = 5
 RATE_LIMIT_MAX_DELAY_SECONDS = 60
 
 
-def safe_print(text):
-    """安全的打印函数，处理编码错误"""
+def safe_print(text, level: str = "INFO"):
+    """安全的打印函数，处理编码错误，并附上时间戳与日志等级。"""
     try:
-        print(text)
+        ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    except Exception:
+        ts = "--:--:--"
+    line = f"[{ts}] [{level}] {text}"
+    try:
+        print(line)
     except UnicodeEncodeError:
         # 如果遇到编码错误，尝试用ASCII编码并忽略无法编码的字符
         try:
-            print(text.encode('ascii', errors='ignore').decode('ascii'))
-        except:
+            print(line.encode('ascii', errors='ignore').decode('ascii'))
+        except Exception:
             # 如果还是失败，打印一个简化的消息
             print("[输出包含无法显示的字符]")
 
