@@ -212,7 +212,7 @@ cd web-ui && npm run build
 ### AI 与运行时
 
 - `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL_NAME`：AI 模型接入必填项。
-- `AI_TITLE_SCREENING_ENABLED`：是否开启「AI 标题预筛」（全局默认，任务级可覆盖）。开启后，爬虫在抓取详情页之前先用 AI 判断商品标题是否根本不符合要求，不符合则直接跳过，节省详情抓取、图片下载与完整 AI 分析的性能。
+- `AI_TITLE_SCREENING_ENABLED`：「AI 标题预筛」的全局关闭开关。该功能**默认对所有任务开启、无需任何配置**；如需全局关闭，将此环境变量设为 `false`。开启后，爬虫在抓取详情页之前先用 AI 判断商品标题是否根本不符合要求，不符合则直接跳过，节省详情抓取、图片下载与完整 AI 分析的性能。
 - `PROXY_URL`：为 AI 请求单独指定 HTTP/SOCKS5 代理。
 - `RUN_HEADLESS`：是否以无头模式运行爬虫；Docker 中应保持 `true`。
 - `SERVER_PORT`：后端监听端口，默认 `8000`。

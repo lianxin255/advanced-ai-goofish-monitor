@@ -201,7 +201,7 @@ cd web-ui && npm run build
 ### AI and Runtime
 
 - `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL_NAME`: required AI model settings.
-- `AI_TITLE_SCREENING_ENABLED`: enable "AI title pre-screening" (global default; can be overridden per task). When on, before fetching the detail page the crawler uses AI to judge whether the title fundamentally meets the requirements; non-matching items are skipped to save detail fetching, image download, and full AI analysis.
+- `AI_TITLE_SCREENING_ENABLED`: opt-out switch for "AI title pre-screening". The feature is **ON by default for every task** (no configuration needed); set this env var to `false` to disable it globally. When on, before fetching the detail page the crawler uses AI to judge whether the title fundamentally meets the requirements; non-matching items are skipped to save detail fetching, image download, and full AI analysis.
 - `PROXY_URL`: dedicated HTTP/SOCKS5 proxy for AI requests.
 - `RUN_HEADLESS`: whether the scraper runs headless; keep it `true` in Docker.
 - `SERVER_PORT`: backend port, default `8000`.

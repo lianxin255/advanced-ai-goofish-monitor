@@ -21,7 +21,11 @@ def test_get_title_screening_enabled_task_overrides_env(monkeypatch):
 
 
 def test_get_title_screening_enabled_string_env(monkeypatch):
+    # 未设置任务级开关与环境变量时，默认开启
     monkeypatch.delenv("AI_TITLE_SCREENING_ENABLED", raising=False)
+    assert _get_title_screening_enabled({}) is True
+    # 环境变量显式关闭时，全局回退为关闭
+    monkeypatch.setenv("AI_TITLE_SCREENING_ENABLED", "false")
     assert _get_title_screening_enabled({}) is False
 
 

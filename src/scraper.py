@@ -320,13 +320,16 @@ async def _governed_ai_analysis(record: dict, image_paths: list, prompt_text: st
 
 
 def _get_title_screening_enabled(task_config: dict) -> bool:
-    """标题预筛开关：任务级优先，否则回退到环境变量。"""
+    """标题预筛开关：任务级优先，否则回退到环境变量，默认开启。"""
     task_value = task_config.get("ai_title_screening")
     if isinstance(task_value, bool):
         return task_value
     if isinstance(task_value, str) and task_value.strip():
         return str(task_value).strip().lower() in {"1", "true", "yes", "on"}
-    return _as_bool(os.getenv("AI_TITLE_SCREENING_ENABLED"), False)
+    env_value = os.getenv("AI_TITLE_SCREENING_ENABLED")
+    if env_value is not None and str(env_value).strip():
+        return _as_bool(env_value, True)
+    return True
 
 
 async def _screen_title_with_ai(

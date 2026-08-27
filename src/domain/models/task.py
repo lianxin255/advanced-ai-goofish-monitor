@@ -146,7 +146,7 @@ class Task(BaseModel):
     blacklist_keywords: List[str] = Field(default_factory=list)
     is_running: bool = False
     execution_status: ExecutionStatus = ExecutionStatus.IDLE
-    ai_title_screening: Optional[bool] = None
+    ai_title_screening: bool = True
 
     @model_validator(mode="before")
     @classmethod
@@ -202,7 +202,7 @@ class TaskCreate(BaseModel):
     decision_mode: Literal["ai", "keyword"] = "ai"
     keyword_rules: List[str] = Field(default_factory=list)
     blacklist_keywords: List[str] = Field(default_factory=list)
-    ai_title_screening: Optional[bool] = None
+    ai_title_screening: bool = True
 
     @model_validator(mode="before")
     @classmethod
@@ -348,7 +348,7 @@ class TaskGenerateRequest(BaseModel):
     decision_mode: Literal["ai", "keyword"] = "ai"
     keyword_rules: List[str] = Field(default_factory=list)
     blacklist_keywords: List[str] = Field(default_factory=list)
-    ai_title_screening: Optional[bool] = None
+    ai_title_screening: bool = True
 
     @model_validator(mode="before")
     @classmethod

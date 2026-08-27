@@ -13,16 +13,16 @@ from src.infrastructure.persistence.sqlite_bootstrap import bootstrap_sqlite_sto
 from src.infrastructure.persistence.sqlite_connection import sqlite_connection
 
 
-def _coerce_optional_bool(value) -> Optional[bool]:
+def _coerce_optional_bool(value, default: bool = False) -> Optional[bool]:
     if value is None:
-        return None
+        return default
     if isinstance(value, bool):
         return value
     if isinstance(value, int):
         return bool(value)
     text = str(value).strip().lower()
     if text in ("", "null", "none", "undefined"):
-        return None
+        return default
     return text in {"1", "true", "yes", "y", "on"}
 
 
@@ -33,7 +33,7 @@ def _row_to_task(row) -> Task:
     payload["personal_only"] = bool(payload["personal_only"])
     payload["free_shipping"] = bool(payload["free_shipping"])
     payload["is_running"] = bool(payload["is_running"])
-    payload["ai_title_screening"] = _coerce_optional_bool(payload.get("ai_title_screening"))
+    payload["ai_title_screening"] = _coerce_optional_bool(payload.get("ai_title_screening"), default=True)
     raw_status = payload.get("execution_status") or "idle"
     payload["execution_status"] = raw_status if raw_status in ("idle", "queued", "running") else "idle"
     payload["keyword_rules"] = json.loads(payload.pop("keyword_rules_json") or "[]")

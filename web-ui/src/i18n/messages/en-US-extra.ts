@@ -62,7 +62,7 @@ const enUSExtra = {
       analyzeImages: 'Analyze Images',
       analyzeImagesHint: 'Disable this to analyze only text and seller quality, useful for text-only models or lower token usage.',
       aiTitleScreening: 'AI Title Pre-screening',
-      aiTitleScreeningHint: 'When enabled, before fetching the detail page the AI judges whether the product title fundamentally meets the requirements; non-matching items are skipped to save detail fetching and full analysis.',
+      aiTitleScreeningHint: 'Enabled by default. Every task screens each product title with AI before fetching the detail page; non-matching items are skipped to save detail fetching and full analysis. Uncheck to disable per task.',
       keywordRules: 'Keyword Rules',
       keywordRulesHint: 'Single OR group: any matching keyword recommends the item. One keyword per line or comma-separated; alphanumeric keywords match whole words.',
       keywordRulesPlaceholder: 'Example: a7m4\nVerified Authentic\nFull Frame',
