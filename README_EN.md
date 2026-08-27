@@ -134,6 +134,7 @@ APP_IMAGE=ai-goofish-monitor:local docker compose up -d
 
 - Import, update, and delete Xianyu login states.
 - Each task can bind a specific account or leave account selection to the system.
+- With account rotation enabled, the system automatically switches between multiple login-state files (`*.json`) stored in `ACCOUNT_STATE_DIR` (default `state/`) to lower the risk of a single account being flagged.
 
 ### Results and Logs
 
@@ -217,13 +218,25 @@ cd web-ui && npm run build
 - `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_ADDRESS` / `SMTP_TO_ADDRESS` / `SMTP_USE_SSL`: email notifications; `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, and `SMTP_TO_ADDRESS` must all be set to enable this channel
 - `WEBHOOK_*`
 
-### Proxy Rotation and Failure Guard
+### Account and Proxy Rotation
 
-- `PROXY_ROTATION_ENABLED`
-- `PROXY_ROTATION_MODE`
-- `PROXY_POOL`
-- `PROXY_ROTATION_RETRY_LIMIT`
-- `PROXY_BLACKLIST_TTL`
+- `ACCOUNT_ROTATION_ENABLED`: master switch for account rotation (global; applies to all tasks once enabled).
+- `ACCOUNT_ROTATION_MODE`: `per_task` (one fixed account per task) or `on_failure` (switch only when an account triggers anti-bot control).
+- `ACCOUNT_STATE_DIR`: directory holding account login-state files; default `state`. Rotation only happens when the directory actually contains `*.json` account files.
+- `ACCOUNT_ROTATION_RETRY_LIMIT` / `ACCOUNT_BLACKLIST_TTL`: retry count and cooldown (seconds) for blacklisted accounts.
+- `PROXY_ROTATION_ENABLED` / `PROXY_ROTATION_MODE` / `PROXY_POOL` / `PROXY_ROTATION_RETRY_LIMIT` / `PROXY_BLACKLIST_TTL`: proxy rotation switch, mode, pool (comma-separated), and retry/cooldown settings.
+
+#### How to enable rotation
+
+1. In the Web UI, open "System Settings → Account and Proxy Rotation" and toggle the relevant switch, then save.
+   - Account rotation requires multiple login-state files: export each account's state JSON via the browser extension and place it in `ACCOUNT_STATE_DIR` (`state/`). If the directory has no `*.json` files, the switch is ignored and the system falls back to a single login state (a console warning is printed).
+   - Proxy rotation requires at least one address in `PROXY_POOL` (e.g. `http://127.0.0.1:7890,socks5://127.0.0.1:1080`); an empty pool means no proxy is used.
+2. After saving, settings are written to `.env` and take effect immediately; the next task run rotates accordingly.
+
+> Note: Earlier versions only enabled account rotation when no root login state existed; once logged in (a `xianyu_state.json` present) the switch was ignored. This is now fixed — with `ACCOUNT_ROTATION_ENABLED` on and account files present in `ACCOUNT_STATE_DIR`, the account pool is used regardless of the root login state.
+
+### Failure Guard
+
 - `TASK_FAILURE_THRESHOLD`
 - `TASK_FAILURE_PAUSE_SECONDS`
 - `TASK_FAILURE_GUARD_PATH`

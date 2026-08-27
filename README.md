@@ -121,6 +121,7 @@ APP_IMAGE=ai-goofish-monitor:local docker compose up -d
 
 - 支持导入、更新、删除闲鱼账号登录态。
 - 每个任务可指定账号，也可不绑定并交给系统自动选择。
+- 启用「账号轮换」后，系统会在 `ACCOUNT_STATE_DIR`（默认 `state/`）下存放的多个账号登录态文件（`*.json`）之间自动切换，降低单账号被风控的概率。
 
 ### 结果查看与运行日志
 
@@ -228,13 +229,25 @@ cd web-ui && npm run build
 - `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_ADDRESS` / `SMTP_TO_ADDRESS` / `SMTP_USE_SSL`：邮件通知，`SMTP_HOST`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`SMTP_TO_ADDRESS` 需同时配置才会启用
 - `WEBHOOK_*`
 
-### 代理轮换与失败保护
+### 账号与代理轮换
 
-- `PROXY_ROTATION_ENABLED`
-- `PROXY_ROTATION_MODE`
-- `PROXY_POOL`
-- `PROXY_ROTATION_RETRY_LIMIT`
-- `PROXY_BLACKLIST_TTL`
+- `ACCOUNT_ROTATION_ENABLED`：是否开启账号轮换（全局开关，开启后对所有任务生效）。
+- `ACCOUNT_ROTATION_MODE`：`per_task`（每个任务固定使用一个账号）或 `on_failure`（仅当账号触发风控时切换）。
+- `ACCOUNT_STATE_DIR`：存放账号登录态文件的目录，默认 `state`，需放入多个 `*.json` 账号态文件才会真正轮换。
+- `ACCOUNT_ROTATION_RETRY_LIMIT` / `ACCOUNT_BLACKLIST_TTL`：轮换重试次数与被拉黑账号的冷却时长（秒）。
+- `PROXY_ROTATION_ENABLED` / `PROXY_ROTATION_MODE` / `PROXY_POOL` / `PROXY_ROTATION_RETRY_LIMIT` / `PROXY_BLACKLIST_TTL`：代理轮换的开关、模式、代理池（逗号分隔）与重试/冷却参数。
+
+#### 如何启用轮换
+
+1. 在 Web UI 的「系统设置 → 账号与代理轮换」中打开对应开关并保存。
+   - 账号轮换需要先准备多个账号登录态：通过浏览器扩展导出每个账号的登录态 JSON，放入 `ACCOUNT_STATE_DIR`（`state/`）目录。若该目录没有任何 `*.json` 文件，即使开启开关也会自动退回单一登录态（控制台会给出提示）。
+   - 代理轮换需要在 `PROXY_POOL` 中填写至少一个代理地址（如 `http://127.0.0.1:7890,socks5://127.0.0.1:1080`），留空则不启用代理。
+2. 保存后设置会写入 `.env` 并立即生效；下次任务运行即按配置进行轮换。
+
+> 注意：早期版本中账号轮换仅在「不存在根登录态」时才会生效，登录后（存在 `xianyu_state.json`）开关会被忽略。现已修复——只要显式开启 `ACCOUNT_ROTATION_ENABLED` 且 `ACCOUNT_STATE_DIR` 下存在账号文件，就会优先使用账号池轮换，不受根登录态影响。
+
+### 失败保护
+
 - `TASK_FAILURE_THRESHOLD`
 - `TASK_FAILURE_PAUSE_SECONDS`
 - `TASK_FAILURE_GUARD_PATH`

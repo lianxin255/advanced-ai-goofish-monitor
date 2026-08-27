@@ -40,10 +40,12 @@ def test_process_service_marks_task_stopped_when_process_exits(monkeypatch, tmp_
             paused_until=None,
         )
 
+        started_event = asyncio.Event()
         stopped = asyncio.Event()
 
         async def on_started(task_id: int):
             events.append(("started", task_id))
+            started_event.set()
 
         async def on_stopped(task_id: int):
             events.append(("stopped", task_id))
@@ -60,8 +62,12 @@ def test_process_service_marks_task_stopped_when_process_exits(monkeypatch, tmp_
         )
         monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
 
-        started = await service.start_task(0, "task-a")
-        assert started is True
+        enqueued = await service.enqueue_task(0, "task-a")
+        assert enqueued is True
+        service.start()
+        assert service.is_queued(0) or service.is_running(0)
+
+        await asyncio.wait_for(started_event.wait(), timeout=1)
         assert events == [("started", 0)]
         assert service.is_running(0) is True
 
@@ -70,6 +76,8 @@ def test_process_service_marks_task_stopped_when_process_exits(monkeypatch, tmp_
 
         assert ("stopped", 0) in events
         assert service.is_running(0) is False
+
+        await service.shutdown()
 
     asyncio.run(run_scenario())
 

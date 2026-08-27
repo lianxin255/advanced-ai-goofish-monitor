@@ -579,11 +579,18 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
 
     rotation_settings = _get_rotation_settings(task_config)
     account_items = load_state_files(rotation_settings["account_state_dir"])
+    if rotation_settings["account_enabled"] and not account_items:
+        print(
+            "LOG: 账号轮换已开启，但未在 "
+            f"{rotation_settings['account_state_dir']} 找到任何账号状态文件，"
+            "将退回到单一登录态（若有）。请放入多个 *.json 账号状态文件以启用轮换。"
+        )
     runtime_plan = resolve_account_runtime_plan(
         strategy=task_config.get("account_strategy"),
         account_state_file=task_config.get("account_state_file"),
         has_root_state_file=os.path.exists(STATE_FILE),
         available_account_files=account_items,
+        rotation_enabled=rotation_settings["account_enabled"],
     )
     forced_account = runtime_plan["forced_account"]
     if runtime_plan["prefer_root_state"]:
