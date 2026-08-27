@@ -1,32 +1,43 @@
-name: Docker Image CI on merge to master
+name: Docker Image CI
+
+# 发布语义：
+# - push 到 main        -> ai-goofish:latest + :sha-xxxxxxx（滚动最新）
+# - push tag v1.2.3     -> ai-goofish:1.2.3 + :sha-xxxxxxx（版本固定）
+# - 手动 dispatch       -> 仅 :sha-xxxxxxx（验证构建用）
+# 每次构建同时重建基础镜像（requirements 未变时走 GHA 层缓存，代价很小），
+# 保证应用镜像与基础镜像的 sha 标签一一对应、可回溯。
 
 on:
   workflow_dispatch:
-  pull_request:
-    types: [closed]
-    branches: ["master"]
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths-ignore:
+      - "**.md"
+      - ".gitignore"
+      - "LICENSE"
+
+concurrency:
+  group: docker-image-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   IMAGE_NAME: ai-goofish
   BASE_IMAGE_NAME: ai-goofish-base
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build-base:
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     outputs:
       base_image: ${{ steps.prepare.outputs.base_image }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -34,28 +45,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Prepare image tags
+      - name: Prepare base image reference
         id: prepare
         env:
-          REPO_OWNER: ${{ github.repository_owner }}
           BASE_IMAGE_NAME: ${{ env.BASE_IMAGE_NAME }}
         run: |
           set -euo pipefail
-
-          owner_lower=$(echo "$REPO_OWNER" | tr '[:upper:]' '[:lower:]')
-          base_image="ghcr.io/${owner_lower}/${BASE_IMAGE_NAME}:latest"
-
-          base_tags=(
-            "${base_image}"
-            "ghcr.io/${owner_lower}/${BASE_IMAGE_NAME}:${GITHUB_SHA}"
-          )
-
-          {
-            echo "base_image=${base_image}"
-            echo 'base_tags<<EOF'
-            printf '%s\n' "${base_tags[@]}"
-            echo EOF
-          } >> "$GITHUB_OUTPUT"
+          owner_lower=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "base_image=ghcr.io/${owner_lower}/${BASE_IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -64,58 +61,44 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Docker meta (base)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # metadata-action 会自动把镜像名转小写
+          images: ghcr.io/${{ github.repository_owner }}/${{ env.BASE_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+
       - name: Build and push base Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile.base
           platforms: linux/amd64,linux/arm64
           pull: true
           push: true
-          tags: ${{ steps.prepare.outputs.base_tags }}
+          # 关闭 provenance，避免包页面出现 unknown/unknown 架构条目
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=ai-goofish-base-docker
           cache-to: type=gha,scope=ai-goofish-base-docker,mode=max
 
   build-and-push:
     needs: build-base
-    if: ${{ needs.build-base.result == 'success' }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Prepare release tags
-        id: prepare
-        env:
-          REPO_OWNER: ${{ github.repository_owner }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
-        run: |
-          set -euo pipefail
-
-          owner_lower=$(echo "$REPO_OWNER" | tr '[:upper:]' '[:lower:]')
-
-          app_tags=(
-            "ghcr.io/${owner_lower}/${IMAGE_NAME}:latest"
-            "ghcr.io/${owner_lower}/${IMAGE_NAME}:${GITHUB_SHA}"
-          )
-
-          {
-            echo 'app_tags<<EOF'
-            printf '%s\n' "${app_tags[@]}"
-            echo EOF
-          } >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -124,16 +107,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Docker meta (release)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=sha
+
       - name: Build and push multi-arch Docker images
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile.release
           platforms: linux/amd64,linux/arm64
           pull: true
           push: true
+          provenance: false
           build-args: |
             BASE_IMAGE=${{ needs.build-base.outputs.base_image }}
-          tags: ${{ steps.prepare.outputs.app_tags }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=ai-goofish-release-docker
           cache-to: type=gha,scope=ai-goofish-release-docker,mode=max
