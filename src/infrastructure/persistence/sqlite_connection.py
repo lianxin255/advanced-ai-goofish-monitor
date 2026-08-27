@@ -181,6 +181,11 @@ def _migrate_tasks_execution_status(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE tasks ADD COLUMN execution_status TEXT NOT NULL DEFAULT 'idle'"
         )
+    # 清洗早期把枚举 str()（如 'ExecutionStatus.IDLE'）写入的列值
+    conn.execute(
+        "UPDATE tasks SET execution_status = 'idle' "
+        "WHERE execution_status NOT IN ('idle', 'queued', 'running')"
+    )
     conn.execute(
         "INSERT OR REPLACE INTO app_metadata(key, value) VALUES ('migration:tasks_execution_status', 'done')"
     )

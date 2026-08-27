@@ -20,7 +20,8 @@ def _row_to_task(row) -> Task:
     payload["personal_only"] = bool(payload["personal_only"])
     payload["free_shipping"] = bool(payload["free_shipping"])
     payload["is_running"] = bool(payload["is_running"])
-    payload["execution_status"] = payload.get("execution_status") or "idle"
+    raw_status = payload.get("execution_status") or "idle"
+    payload["execution_status"] = raw_status if raw_status in ("idle", "queued", "running") else "idle"
     payload["keyword_rules"] = json.loads(payload.pop("keyword_rules_json") or "[]")
     payload["blacklist_keywords"] = json.loads(payload.pop("blacklist_keywords_json", None) or "[]")
     return Task(**payload)
@@ -131,7 +132,8 @@ class SqliteTaskRepository(TaskRepository):
         values["personal_only"] = int(task.personal_only)
         values["free_shipping"] = int(task.free_shipping)
         values["is_running"] = int(task.is_running)
-        values["execution_status"] = str(task.execution_status)
+        exec_status = task.execution_status
+        values["execution_status"] = getattr(exec_status, "value", exec_status)
         values["keyword_rules_json"] = json.dumps(task.keyword_rules or [], ensure_ascii=False)
         values["blacklist_keywords_json"] = json.dumps(task.blacklist_keywords or [], ensure_ascii=False)
         values.pop("keyword_rules", None)
