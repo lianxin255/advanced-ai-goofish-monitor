@@ -280,3 +280,51 @@ def test_sanitize_no_proxy_handles_both_keys(monkeypatch):
     _sanitize_no_proxy_env()
     assert os.environ["NO_PROXY"] == "::1"
     assert os.environ["no_proxy"] == "fe80::1"
+
+
+def test_call_ai_resolves_output_token_cap_from_env(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client.settings = SimpleNamespace(
+        model_name="fake-model",
+        enable_response_format=False,
+        enable_thinking=False,
+    )
+    request_history = []
+
+    async def fake_create(**kwargs):
+        request_history.append(kwargs)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))]
+        )
+
+    client.client = _build_fake_client(fake_create)
+    monkeypatch.setenv("AI_MAX_OUTPUT_TOKENS", "1234")
+
+    asyncio.run(client._call_ai([{"role": "user", "content": "hi"}]))
+
+    assert request_history[0]["max_tokens"] == 1234
+
+
+def test_call_ai_explicit_output_token_cap_overrides_env(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client.settings = SimpleNamespace(
+        model_name="fake-model",
+        enable_response_format=False,
+        enable_thinking=False,
+    )
+    request_history = []
+
+    async def fake_create(**kwargs):
+        request_history.append(kwargs)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))]
+        )
+
+    client.client = _build_fake_client(fake_create)
+    monkeypatch.setenv("AI_MAX_OUTPUT_TOKENS", "1234")
+
+    asyncio.run(
+        client._call_ai([{"role": "user", "content": "hi"}], max_output_tokens=77)
+    )
+
+    assert request_history[0]["max_tokens"] == 77

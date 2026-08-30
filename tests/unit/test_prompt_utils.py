@@ -58,3 +58,33 @@ def test_generate_criteria_closes_ai_client_after_ai_failure(monkeypatch, tmp_pa
         asyncio.run(prompt_utils.generate_criteria("need a gpu", str(reference_file)))
 
     assert close_state["closed"] is True
+
+
+def test_generate_criteria_uses_env_output_token_cap(monkeypatch, tmp_path):
+    reference_file = tmp_path / "reference.txt"
+    reference_file.write_text("reference", encoding="utf-8")
+    captured = {}
+
+    class FakeAIClient:
+        def is_available(self):
+            return True
+
+        def refresh(self):
+            raise AssertionError("refresh should not be called")
+
+        async def _call_ai(self, _messages, **kwargs):
+            captured.update(kwargs)
+            return "generated criteria"
+
+        async def close(self):
+            pass
+
+    monkeypatch.setattr(prompt_utils, "AIClient", FakeAIClient)
+    monkeypatch.setenv("AI_MAX_OUTPUT_TOKENS", "8192")
+
+    result = asyncio.run(
+        prompt_utils.generate_criteria("need a gpu", str(reference_file))
+    )
+
+    assert result == "generated criteria"
+    assert captured["max_output_tokens"] == 8192

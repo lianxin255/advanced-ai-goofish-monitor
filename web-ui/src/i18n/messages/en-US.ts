@@ -216,6 +216,8 @@ const enUS = {
       keyConfigured: 'Configured and intentionally not echoed back.',
       keyMissing: 'Not configured and intentionally not echoed back.',
       modelName: 'Model Name',
+      maxOutputTokens: 'Max Output Tokens',
+      maxOutputTokensHint: 'Maximum output tokens per AI response; reasoning tokens count too — ≥16k recommended. Values above the model limit are rejected by the server.',
       proxy: 'Proxy URL (optional)',
       loading: 'Loading AI settings...',
       testConnection: 'Test Connection',

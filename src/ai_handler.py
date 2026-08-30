@@ -25,6 +25,7 @@ from src.config import (
     TASK_IMAGE_DIR_PREFIX,
     MODEL_NAME,
     ENABLE_RESPONSE_FORMAT,
+    get_ai_max_output_tokens,
     client,
 )
 from src.ai_message_builder import (
@@ -417,7 +418,7 @@ async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
                 model=MODEL_NAME,
                 messages=messages,
                 temperature=current_temperature,
-                max_output_tokens=4000,
+                max_output_tokens=get_ai_max_output_tokens(),
                 enable_json_output=use_response_format,
             )
             if not use_temperature:
@@ -567,6 +568,8 @@ async def screen_product_title(
                 model=MODEL_NAME,
                 messages=messages,
                 temperature=0.0,
+                # 标题预筛只输出结构化真假判断，固定小上限以控成本；
+                # 即使失败也会安全回退为"不跳过"，不随全局输出上限联动。
                 max_output_tokens=300,
                 enable_json_output=ENABLE_RESPONSE_FORMAT,
             )

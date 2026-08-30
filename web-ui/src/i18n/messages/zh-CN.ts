@@ -216,6 +216,8 @@ const zhCN = {
       keyConfigured: '已配置，为安全起见不回显。',
       keyMissing: '未配置，为安全起见不回显。',
       modelName: '模型名称',
+      maxOutputTokens: '输出 Token 上限',
+      maxOutputTokensHint: '单次 AI 回复的最大输出 token 数，推理模型的思考也计入，建议 ≥16k；超出模型上限会被服务端拒绝。',
       proxy: '代理地址 (可选)',
       loading: '正在加载 AI 配置...',
       testConnection: '测试连接',

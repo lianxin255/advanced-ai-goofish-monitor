@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettings } from '@/composables/useSettings'
@@ -57,6 +57,24 @@ function notifySuccess(title: string, description?: string) {
 
 function notifyError(title: string, description?: string) {
   toast({ title, description, variant: 'destructive' })
+}
+
+const MAX_OUTPUT_TOKEN_PRESETS = [
+  { label: '4k', value: 4000 },
+  { label: '8k', value: 8000 },
+  { label: '16k', value: 16000 },
+  { label: '32k', value: 32000 },
+  { label: '64k', value: 64000 },
+  { label: '128k', value: 128000 },
+]
+
+const maxOutputTokensInput = computed(() =>
+  aiSettings.value.AI_MAX_OUTPUT_TOKENS == null ? '' : String(aiSettings.value.AI_MAX_OUTPUT_TOKENS)
+)
+
+function onMaxOutputTokensInput(value: string | number) {
+  const parsed = Number(value)
+  aiSettings.value.AI_MAX_OUTPUT_TOKENS = value === '' || Number.isNaN(parsed) ? null : parsed
 }
 
 async function handleSaveNotifications(payload: NotificationSettingsUpdate) {
@@ -247,6 +265,32 @@ watch(selectedPrompt, async (value) => {
             <div class="grid gap-2">
               <Label>{{ t('settings.ai.modelName') }}</Label>
               <Input v-model="aiSettings.OPENAI_MODEL_NAME" placeholder="gpt-3.5-turbo" />
+            </div>
+            <div class="grid gap-2">
+              <Label>{{ t('settings.ai.maxOutputTokens') }}</Label>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <Button
+                  v-for="preset in MAX_OUTPUT_TOKEN_PRESETS"
+                  :key="preset.value"
+                  type="button"
+                  size="sm"
+                  class="h-7 px-2.5 text-xs"
+                  :variant="aiSettings.AI_MAX_OUTPUT_TOKENS === preset.value ? 'default' : 'outline'"
+                  @click="aiSettings.AI_MAX_OUTPUT_TOKENS = preset.value"
+                >
+                  {{ preset.label }}
+                </Button>
+              </div>
+              <Input
+                :model-value="maxOutputTokensInput"
+                type="number"
+                :min="1"
+                :max="1000000"
+                class="max-w-44"
+                placeholder="4000"
+                @update:model-value="onMaxOutputTokensInput"
+              />
+              <p class="text-xs text-gray-500">{{ t('settings.ai.maxOutputTokensHint') }}</p>
             </div>
             <div class="grid gap-2">
               <Label>{{ t('settings.ai.proxy') }}</Label>

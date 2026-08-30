@@ -86,6 +86,7 @@ export interface AiSettings {
   OPENAI_BASE_URL?: string
   OPENAI_MODEL_NAME?: string
   PROXY_URL?: string
+  AI_MAX_OUTPUT_TOKENS?: number | null
 }
 
 export interface RotationSettings {

@@ -203,6 +203,7 @@ cd web-ui && npm run build
 - `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL_NAME`: required AI model settings.
 - `AI_TITLE_SCREENING_ENABLED`: opt-out switch for "AI title pre-screening". The feature is **ON by default for every task** (no configuration needed); set this env var to `false` to disable it globally. When on, before fetching the detail page the crawler uses AI to judge whether the title fundamentally meets the requirements; non-matching items are skipped to save detail fetching, image download, and full AI analysis.
 - `PROXY_URL`: dedicated HTTP/SOCKS5 proxy for AI requests.
+- `AI_MAX_OUTPUT_TOKENS`: maximum output tokens per AI response, default `4000`. Reasoning models spend thinking tokens from the same budget — increase it (e.g. `16000`) if analysis results come back empty; presets are also available in the Web UI under "System Settings -> AI Settings".
 - `RUN_HEADLESS`: whether the scraper runs headless; keep it `true` in Docker.
 - `SERVER_PORT`: backend port, default `8000`.
 - `LOGIN_IS_EDGE`: use Edge instead of Chrome locally; Docker images do not bundle Edge and always run with Chromium.

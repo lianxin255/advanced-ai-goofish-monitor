@@ -14,6 +14,7 @@ from src.ai_message_builder import (
     build_analysis_text_prompt,
     build_user_message_content,
 )
+from src.config import get_ai_max_output_tokens
 from src.infrastructure.config.settings import AISettings
 from src.infrastructure.config.env_manager import env_manager
 from src.services.ai_request_compat import (
@@ -184,10 +185,14 @@ class AIClient:
         messages: List[Dict],
         *,
         temperature: float = 0.1,
-        max_output_tokens: int = 4000,
+        max_output_tokens: Optional[int] = None,
         enable_json_output: Optional[bool] = None,
     ) -> str:
         """调用 AI API"""
+        # 输出上限未显式传入时按调用时配置解析（Web UI 保存后立即生效），
+        # 不能放在签名默认值里——那会在 import 时固化。
+        if max_output_tokens is None:
+            max_output_tokens = get_ai_max_output_tokens()
         api_mode = CHAT_COMPLETIONS_API_MODE
         use_response_format = (
             self.settings.enable_response_format

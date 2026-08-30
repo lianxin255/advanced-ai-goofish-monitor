@@ -338,6 +338,7 @@ def test_ai_settings_fall_back_to_runtime_environment_when_env_file_missing(tmp_
         "OPENAI_MODEL_NAME": "runtime-model",
         "SKIP_AI_ANALYSIS": False,
         "PROXY_URL": "http://127.0.0.1:7890",
+        "AI_MAX_OUTPUT_TOKENS": 4000,
     }
 
     status_response = client.get("/api/settings/status")
@@ -437,3 +438,27 @@ def test_ai_test_endpoint_falls_back_to_responses_when_chat_completions_api_404(
     assert request_history[0][1]["messages"][0]["content"] == settings.AI_TEST_PROMPT
     assert request_history[1][0] == "responses"
     assert request_history[1][1]["input"][0]["content"][0]["text"] == settings.AI_TEST_PROMPT
+
+
+def test_ai_max_output_tokens_roundtrip_and_validation(tmp_path, monkeypatch):
+    _clear_settings_env(monkeypatch)
+    monkeypatch.delenv("AI_MAX_OUTPUT_TOKENS", raising=False)
+    env_file = tmp_path / ".env"
+    monkeypatch.setattr(env_manager, "env_file", env_file)
+    client = _build_settings_client()
+
+    put_response = client.put("/api/settings/ai", json={"AI_MAX_OUTPUT_TOKENS": 16384})
+    assert put_response.status_code == 200
+    assert "AI_MAX_OUTPUT_TOKENS=16384" in env_file.read_text(encoding="utf-8")
+
+    get_response = client.get("/api/settings/ai")
+    assert get_response.status_code == 200
+    assert get_response.json()["AI_MAX_OUTPUT_TOKENS"] == 16384
+
+    invalid_low = client.put("/api/settings/ai", json={"AI_MAX_OUTPUT_TOKENS": 0})
+    assert invalid_low.status_code == 422
+
+    invalid_high = client.put(
+        "/api/settings/ai", json={"AI_MAX_OUTPUT_TOKENS": 2_000_001}
+    )
+    assert invalid_high.status_code == 422

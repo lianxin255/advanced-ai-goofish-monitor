@@ -4,7 +4,11 @@ import sys
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
+from src.infrastructure.config.env_manager import env_manager
 from src.infrastructure.config.settings import (
+    AI_MAX_OUTPUT_TOKENS_DEFAULT,
+    AI_MAX_OUTPUT_TOKENS_MAX,
+    AI_MAX_OUTPUT_TOKENS_MIN,
     AISettings,
     AppSettings,
     NotificationSettings,
@@ -113,6 +117,20 @@ def _model_requires_thinking_disabled(model_name):
     """识别默认需要关闭思考模式的模型（如 MiniMax）。"""
     name = (model_name or "").lower()
     return any(marker in name for marker in THINKING_DISABLED_MODEL_MARKERS)
+
+
+def get_ai_max_output_tokens() -> int:
+    """AI 单次回复的输出 token 上限。
+
+    调用时经 env_manager 实时读取 .env，Web UI 保存后下一次 AI 调用即生效，
+    无需重启进程；解析失败或越界时收敛到默认值。
+    """
+    raw = env_manager.get_value("AI_MAX_OUTPUT_TOKENS", "")
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return AI_MAX_OUTPUT_TOKENS_DEFAULT
+    return max(AI_MAX_OUTPUT_TOKENS_MIN, min(AI_MAX_OUTPUT_TOKENS_MAX, value))
 
 
 def get_ai_request_params(**kwargs):

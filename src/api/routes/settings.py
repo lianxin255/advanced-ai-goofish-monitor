@@ -9,8 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.api.dependencies import get_process_service
+from src.config import get_ai_max_output_tokens
 from src.infrastructure.config.env_manager import env_manager
 from src.infrastructure.config.settings import (
+    AI_MAX_OUTPUT_TOKENS_MAX,
     AISettings,
     reload_settings,
     scraper_settings,
@@ -123,6 +125,7 @@ class AISettingsModel(BaseModel):
     OPENAI_MODEL_NAME: Optional[str] = None
     SKIP_AI_ANALYSIS: Optional[bool] = None
     PROXY_URL: Optional[str] = None
+    AI_MAX_OUTPUT_TOKENS: Optional[int] = Field(None, ge=1, le=AI_MAX_OUTPUT_TOKENS_MAX)
 
 
 class GlobalBlacklistRequest(BaseModel):
@@ -323,6 +326,7 @@ async def get_ai_settings():
         "OPENAI_MODEL_NAME": env_manager.get_value("OPENAI_MODEL_NAME", ""),
         "SKIP_AI_ANALYSIS": env_manager.get_value("SKIP_AI_ANALYSIS", "false").lower() == "true",
         "PROXY_URL": env_manager.get_value("PROXY_URL", ""),
+        "AI_MAX_OUTPUT_TOKENS": get_ai_max_output_tokens(),
     }
 
 
@@ -339,6 +343,8 @@ async def update_ai_settings(settings: AISettingsModel):
         updates["SKIP_AI_ANALYSIS"] = str(settings.SKIP_AI_ANALYSIS).lower()
     if settings.PROXY_URL is not None:
         updates["PROXY_URL"] = settings.PROXY_URL
+    if settings.AI_MAX_OUTPUT_TOKENS is not None:
+        updates["AI_MAX_OUTPUT_TOKENS"] = str(settings.AI_MAX_OUTPUT_TOKENS)
 
     success = env_manager.update_values(updates)
     if not success:

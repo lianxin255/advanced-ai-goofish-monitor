@@ -39,6 +39,13 @@ else:
             protected_namespaces = ()
 
 
+# AI 单次回复的输出 token 上限。推理模型的思考过程同样计入该额度，
+# 偏小时会出现"空回复"（内容被思考耗尽），可在 .env / Web UI 调整。
+AI_MAX_OUTPUT_TOKENS_DEFAULT = 4000
+AI_MAX_OUTPUT_TOKENS_MIN = 1
+AI_MAX_OUTPUT_TOKENS_MAX = 1_000_000
+
+
 class AISettings(_EnvSettings):
     """AI模型配置"""
     api_key: Optional[str] = _env_field(None, "OPENAI_API_KEY")
@@ -49,6 +56,12 @@ class AISettings(_EnvSettings):
     enable_response_format: bool = _env_field(True, "ENABLE_RESPONSE_FORMAT")
     enable_thinking: bool = _env_field(False, "ENABLE_THINKING")
     skip_analysis: bool = _env_field(False, "SKIP_AI_ANALYSIS")
+    max_output_tokens: int = _env_field(
+        AI_MAX_OUTPUT_TOKENS_DEFAULT,
+        "AI_MAX_OUTPUT_TOKENS",
+        ge=AI_MAX_OUTPUT_TOKENS_MIN,
+        le=AI_MAX_OUTPUT_TOKENS_MAX,
+    )
 
     def is_configured(self) -> bool:
         """检查AI是否已正确配置"""
