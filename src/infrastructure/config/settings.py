@@ -41,6 +41,9 @@ else:
 
 # AI 单次回复的输出 token 上限。推理模型的思考过程同样计入该额度，
 # 偏小时会出现"空回复"（内容被思考耗尽），可在 .env / Web UI 调整。
+# 注意：此处不做范围校验（模块级单例在 import 时实例化，越界即崩），
+# 越界/非法值由 src.config.get_ai_max_output_tokens 读取时夹取，
+# API 输入校验由 routes/settings.py 的 AISettingsModel 负责。
 AI_MAX_OUTPUT_TOKENS_DEFAULT = 4000
 AI_MAX_OUTPUT_TOKENS_MIN = 1
 AI_MAX_OUTPUT_TOKENS_MAX = 1_000_000
@@ -59,8 +62,6 @@ class AISettings(_EnvSettings):
     max_output_tokens: int = _env_field(
         AI_MAX_OUTPUT_TOKENS_DEFAULT,
         "AI_MAX_OUTPUT_TOKENS",
-        ge=AI_MAX_OUTPUT_TOKENS_MIN,
-        le=AI_MAX_OUTPUT_TOKENS_MAX,
     )
 
     def is_configured(self) -> bool:

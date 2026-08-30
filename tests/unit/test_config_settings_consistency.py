@@ -53,3 +53,17 @@ def test_config_ai_max_output_tokens_defaults_and_clamps(monkeypatch):
 
     monkeypatch.setenv("AI_MAX_OUTPUT_TOKENS", "garbage")
     assert reloaded.get_ai_max_output_tokens() == 4000
+
+
+def test_config_ai_max_output_tokens_out_of_range_does_not_break_settings(monkeypatch):
+    """手填越界值不应在 import 期炸掉模块级单例（读取侧负责夹取）。"""
+    monkeypatch.setenv("AI_MAX_OUTPUT_TOKENS", "2000000")
+
+    import src.config as config_module
+    from src.infrastructure.config.settings import AISettings
+
+    reloaded = importlib.reload(config_module)
+
+    s = AISettings()
+    assert s.max_output_tokens == 2_000_000
+    assert reloaded.get_ai_max_output_tokens() == 1_000_000

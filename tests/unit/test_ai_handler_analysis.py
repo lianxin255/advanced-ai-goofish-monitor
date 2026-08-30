@@ -294,3 +294,33 @@ def test_get_ai_analysis_uses_first_json_object_when_model_returns_multiple_obje
 
     assert result["is_recommended"] is True
     assert result["reason"] == "first"
+
+
+def test_get_ai_analysis_passes_env_output_token_cap(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    request_history = []
+
+    async def fake_create(**kwargs):
+        request_history.append(kwargs)
+        return SimpleNamespace(
+            output_text=(
+                '{"prompt_version":"v1","is_recommended":true,'
+                '"reason":"ok","risk_tags":[],"criteria_analysis":{"seller_type":"个人"}}'
+            )
+        )
+
+    monkeypatch.setattr(ai_handler, "client", _build_fake_client(fake_create))
+    monkeypatch.setattr(ai_handler, "MODEL_NAME", "fake-model")
+    monkeypatch.setattr(ai_handler, "ENABLE_RESPONSE_FORMAT", True)
+    monkeypatch.setattr(app_config, "ENABLE_RESPONSE_FORMAT", True)
+    monkeypatch.setenv("AI_MAX_OUTPUT_TOKENS", "1234")
+
+    asyncio.run(
+        ai_handler.get_ai_analysis(
+            {"商品信息": {"商品ID": "3", "商品标题": "测试商品3"}},
+            image_paths=[],
+            prompt_text="请输出 JSON",
+        )
+    )
+
+    assert request_history[0]["max_tokens"] == 1234
