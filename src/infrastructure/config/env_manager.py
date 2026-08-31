@@ -90,8 +90,13 @@ class EnvManager:
                 return False
 
     def _write_env(self, env_vars: Dict[str, str]) -> bool:
-        """将环境变量原子性地写入文件：先写临时文件，再用 os.replace 整体替换，
-        避免写入过程中崩溃导致 .env 被截断/丢失。调用方需持有 self._lock。"""
+        """将环境变量写入文件：优先"临时文件 + os.replace"原子替换，避免写入过程
+        中崩溃导致 .env 被截断/丢失；若 .env 是 docker 单文件 bind mount 的挂载点，
+        rename 会报 EBUSY（Device or resource busy），此时退化为就地覆写以保证
+        保存可用。调用方需持有 self._lock。"""
+        content = "".join(
+            f"{key}={self._serialize_value(value)}\n" for key, value in env_vars.items()
+        )
         directory = self.env_file.parent if str(self.env_file.parent) else Path(".")
         directory.mkdir(parents=True, exist_ok=True)
         tmp_fd, tmp_path = tempfile.mkstemp(
@@ -99,9 +104,12 @@ class EnvManager:
         )
         try:
             with os.fdopen(tmp_fd, 'w', encoding='utf-8') as f:
-                for key, value in env_vars.items():
-                    f.write(f"{key}={self._serialize_value(value)}\n")
-            os.replace(tmp_path, self.env_file)
+                f.write(content)
+            try:
+                os.replace(tmp_path, self.env_file)
+            except OSError:
+                with open(self.env_file, 'w', encoding='utf-8') as f:
+                    f.write(content)
             return True
         except Exception as e:
             print(f"写入 .env 文件失败: {e}")

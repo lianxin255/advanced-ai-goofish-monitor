@@ -1,3 +1,4 @@
+import os
 import threading
 
 from src.infrastructure.config.env_manager import EnvManager
@@ -51,3 +52,26 @@ def test_write_env_replaces_file_atomically_leaving_no_tmp_file(tmp_path):
     assert manager.set_value("FOO", "bar") is True
     assert env_file.read_text(encoding="utf-8") == "FOO=bar\n"
     assert list(tmp_path.glob(".env.*.tmp")) == []
+
+
+def test_write_env_falls_back_to_in_place_when_replace_fails(tmp_path, monkeypatch):
+    """docker 单文件 bind mount 下 .env 是挂载点，os.replace 会 EBUSY；
+    此时必须退化为就地覆写而不是保存失败。"""
+    env_file = tmp_path / ".env"
+    env_file.write_text("FOO=bar\n", encoding="utf-8")
+    manager = EnvManager(env_file)
+
+    real_replace = os.replace
+
+    def busy_replace(src, dst, *args, **kwargs):
+        if str(dst) == str(env_file):
+            raise OSError(16, "Device or resource busy")
+        return real_replace(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(
+        "src.infrastructure.config.env_manager.os.replace", busy_replace
+    )
+
+    assert manager.set_value("AI_MAX_OUTPUT_TOKENS", "16000") is True
+    assert "AI_MAX_OUTPUT_TOKENS=16000" in env_file.read_text(encoding="utf-8")
+    assert manager.get_value("AI_MAX_OUTPUT_TOKENS") == "16000"
