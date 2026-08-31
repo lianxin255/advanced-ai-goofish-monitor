@@ -6,10 +6,13 @@ import random
 import re
 import sys
 import shutil
+import time
 import traceback
 from datetime import datetime, timedelta
+from typing import Dict
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
 
+import openai
 import requests
 
 # 设置标准输出编码为UTF-8，解决Windows控制台编码问题
@@ -26,6 +29,7 @@ from src.config import (
     MODEL_NAME,
     ENABLE_RESPONSE_FORMAT,
     get_ai_max_output_tokens,
+    build_model_runners,
     client,
 )
 from src.ai_message_builder import (
@@ -34,6 +38,7 @@ from src.ai_message_builder import (
 )
 from src.services.ai_response_parser import (
     EmptyAIResponseError,
+    ModelRepeatedParseError,
     extract_ai_response_content,
     parse_ai_response_json,
 )
@@ -42,12 +47,12 @@ from src.services.ai_request_compat import (
     RESPONSES_API_MODE,
     build_ai_request_params,
     create_ai_response_async,
-    get_retry_after_seconds,
     is_chat_completions_api_unsupported_error,
     is_json_output_unsupported_error,
     is_rate_limit_error,
     is_responses_api_unsupported_error,
     is_temperature_unsupported_error,
+    build_thinking_disable_extra,
     remove_temperature_param,
 )
 from src.services.notification_service import NotificationService, build_notification_service
@@ -67,7 +72,57 @@ DEFAULT_IMAGE_DOWNLOAD_CONCURRENCY = max(
 )
 
 RATE_LIMIT_BASE_DELAY_SECONDS = 5
-RATE_LIMIT_MAX_DELAY_SECONDS = 60
+# 单次退避上限：5 小时。速率限制/调用失败时按指数增长，最久退避到该值。
+RATE_LIMIT_MAX_DELAY_SECONDS = 5 * 60 * 60
+
+# 非速率限制类调用失败的单次退避上限（如服务不可用/超时），不应等 5 小时。
+GENERAL_FAILURE_MAX_BACKOFF_SECONDS = 60
+# 单次 AI 请求超时秒数。超时即视作失败进入重试/兜底分支。
+AI_CALL_TIMEOUT_SECONDS = int(os.getenv("AI_CALL_TIMEOUT_SECONDS", "60"))
+# 熔断阈值：连续失败 N 次后熔断一段时间，期间直接跳过该模型的调用。
+AI_CIRCUIT_FAILURE_THRESHOLD = int(os.getenv("AI_CIRCUIT_FAILURE_THRESHOLD", "3"))
+# 熔断冷却时间（秒）：熔断开启后多久进入半开状态。
+AI_CIRCUIT_COOLDOWN_SECONDS = int(os.getenv("AI_CIRCUIT_COOLDOWN_SECONDS", "300"))
+
+
+class ModelCircuitOpenError(Exception):
+    """模型熔断开启：跳过当前调用，避免服务不可用期间持续空转。"""
+
+
+class _ModelCircuitBreaker:
+    """按模型名跟踪连续失败次数，超过阈值后熔断一段时间。"""
+
+    def __init__(self, threshold: int, cooldown_seconds: int) -> None:
+        self._threshold = threshold
+        self._cooldown = cooldown_seconds
+        self._state: Dict[str, Dict[str, float]] = {}
+
+    def is_open(self, model_name: str) -> bool:
+        info = self._state.get(model_name)
+        if not info:
+            return False
+        failures = info.get("failures", 0)
+        if failures < self._threshold:
+            return False
+        last_failure = info.get("last_failure", 0.0)
+        if (time.monotonic() - last_failure) >= self._cooldown:
+            # 进入半开：允许下一次调用尝试。
+            return False
+        return True
+
+    def record_failure(self, model_name: str) -> None:
+        info = self._state.setdefault(model_name, {"failures": 0, "last_failure": 0.0})
+        info["failures"] = info.get("failures", 0) + 1
+        info["last_failure"] = time.monotonic()
+
+    def record_success(self, model_name: str) -> None:
+        self._state.pop(model_name, None)
+
+
+_MODEL_CIRCUIT = _ModelCircuitBreaker(
+    threshold=AI_CIRCUIT_FAILURE_THRESHOLD,
+    cooldown_seconds=AI_CIRCUIT_COOLDOWN_SECONDS,
+)
 
 
 def safe_print(text, level: str = "INFO"):
@@ -249,10 +304,14 @@ def encode_image_to_base64(image_path):
         return None
 
 
+# 分析标准版本；base_prompt.txt 要求模型回显该字段，但部分模型（如 MiniMax）经常漏掉，
+# 缺失时直接补默认值，避免因一个自描述字段而反复重试、浪费额度。
+EXPECTED_PROMPT_VERSION = "EagleEye-V6.4"
+
+
 def validate_ai_response_format(parsed_response):
     """验证AI响应的格式是否符合预期结构"""
     required_fields = [
-        "prompt_version",
         "is_recommended",
         "reason",
         "risk_tags",
@@ -329,15 +388,63 @@ async def send_ntfy_notification(product_data, reason, retries=3, delay=5):
 
 
 async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
-    """将完整的商品JSON数据和所有图片发送给 AI 进行分析（异步）。"""
-    if not client:
+    """将完整的商品JSON数据和所有图片发送给 AI 进行分析（异步）。
+
+    多模型兜底：依次尝试主模型及其余兜底模型。API/网络错误或同一模型连续
+    多次解析失败都会触发兜底切换，避免在出问题的模型上浪费时间和 token。
+    """
+    runners = build_model_runners()
+    if not runners:
         safe_print("   [AI分析] 错误：AI客户端未初始化，跳过分析。")
+        return None
+    last_exc = None
+    for idx, (client, model_name, enable_response_format) in enumerate(runners):
+        # 熔断开启：模型最近连续失败次数过多，冷却期间跳过本次调用。
+        if _MODEL_CIRCUIT.is_open(model_name):
+            role = "主模型" if idx == 0 else f"兜底模型#{idx}"
+            safe_print(
+                f"   [AI分析] {role} ({model_name}) 处于熔断冷却中，跳过本次调用",
+                level="WARNING",
+            )
+            raise ModelCircuitOpenError(f"{model_name} 熔断中")
+        try:
+            return await _analyze_with_single_model(
+                client, model_name, enable_response_format, product_data, image_paths, prompt_text
+            )
+        except (openai.APIConnectionError, openai.APITimeoutError, openai.APIStatusError) as e:
+            last_exc = e
+            role = "主模型" if idx == 0 else f"兜底模型#{idx}"
+            safe_print(f"   [AI分析] {role} ({model_name}) 发生API/网络错误，切换下一模型: {e}", level="WARNING")
+            continue
+        except ModelRepeatedParseError as e:
+            role = "主模型" if idx == 0 else f"兜底模型#{idx}"
+            is_last = idx >= len(runners) - 1
+            if is_last:
+                safe_print(
+                    f"   [AI分析] {role} ({model_name}) 连续解析失败且已是最后一个模型，放弃兜底: {e}",
+                    level="ERROR",
+                )
+                raise
+            safe_print(
+                f"   [AI分析] {role} ({model_name}) 解析连续失败，切换下一模型: {e}",
+                level="WARNING",
+            )
+            continue
+    if last_exc is not None:
+        raise last_exc
+    return None
+
+
+async def _analyze_with_single_model(client, model_name, enable_response_format, product_data, image_paths=None, prompt_text=""):
+    """使用单一指定模型对商品进行分析（内部函数，不含多模型兜底）。"""
+    if not client:
+        safe_print("   [AI分析] 错误：该模型客户端未初始化，跳过。")
         return None
 
     item_info = product_data.get('商品信息', {})
     product_id = item_info.get('商品ID', 'N/A')
 
-    safe_print(f"\n   [AI分析] 开始分析商品 #{product_id} (含 {len(image_paths or [])} 张图片)...")
+    safe_print(f"\n   [AI分析][{model_name}] 开始分析商品 #{product_id} (含 {len(image_paths or [])} 张图片)...")
     safe_print(f"   [AI分析] 标题: {item_info.get('商品标题', '无')}")
 
     if not prompt_text:
@@ -402,20 +509,23 @@ async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
         safe_print(f"   [日志] 保存AI分析日志时出错: {e}")
 
     # 增强的AI调用，包含更严格的结构化输出控制和重试机制
-    max_retries = 4
+    # 退避按指数增长，单次最长 RATE_LIMIT_MAX_DELAY_SECONDS(5h)，此处重试次数需足够多才能逼近上限。
+    # 退避按指数增长，单次最长 RATE_LIMIT_MAX_DELAY_SECONDS(5h)。这里只需要
+    # 几次重试来覆盖瞬时抖动；同一 prompt 反复解析失败时应让上层切到兜底模型。
+    max_retries = 5
+    parse_failure_threshold = 2  # 连续 N 次解析/格式失败则抛 ModelRepeatedParseError
     api_mode = CHAT_COMPLETIONS_API_MODE
-    use_response_format = ENABLE_RESPONSE_FORMAT
+    use_response_format = enable_response_format
     use_temperature = True
+    consecutive_parse_failures = 0
     for attempt in range(max_retries):
         try:
             # 根据重试次数调整参数
             current_temperature = 0.1 if attempt == 0 else 0.05  # 重试时使用更低的温度
 
-            from src.config import get_ai_request_params
-
             request_params = build_ai_request_params(
                 api_mode,
-                model=MODEL_NAME,
+                model=model_name,
                 messages=messages,
                 temperature=current_temperature,
                 max_output_tokens=get_ai_max_output_tokens(),
@@ -424,7 +534,10 @@ async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
             if not use_temperature:
                 request_params = remove_temperature_param(request_params)
 
-            request_params = get_ai_request_params(**request_params)
+            # 按模型关闭 thinking：MiniMax 用 thinking.type=disabled，腾讯 Hy3 用 enable_thinking=False
+            thinking_extra = build_thinking_disable_extra(model_name)
+            if thinking_extra:
+                request_params["extra_body"] = thinking_extra
 
             if AI_DEBUG_MODE:
                 safe_print(f"\n--- [AI DEBUG] 第{attempt + 1}次尝试 REQUEST ---")
@@ -437,10 +550,13 @@ async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
                 )
                 safe_print("-----------------------------------\n")
 
-            response = await create_ai_response_async(
-                client,
-                api_mode,
-                request_params,
+            response = await asyncio.wait_for(
+                create_ai_response_async(
+                    client,
+                    api_mode,
+                    request_params,
+                ),
+                timeout=AI_CALL_TIMEOUT_SECONDS,
             )
             ai_response_content = extract_ai_response_content(response)
 
@@ -453,28 +569,65 @@ async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
             try:
                 parsed_response = parse_ai_response_json(ai_response_content)
 
+                # 部分模型会漏掉自描述的 prompt_version 字段，缺失时补默认值，
+                # 避免因为这一非关键字段导致整次分析失败并重试。
+                if not parsed_response.get("prompt_version"):
+                    parsed_response["prompt_version"] = EXPECTED_PROMPT_VERSION
+
                 # 验证响应格式
                 if validate_ai_response_format(parsed_response):
                     safe_print(f"   [AI分析] 第{attempt + 1}次尝试成功，响应格式验证通过")
+                    _MODEL_CIRCUIT.record_success(model_name)
                     return parsed_response
                 safe_print(f"   [AI分析] 第{attempt + 1}次尝试格式验证失败")
+                consecutive_parse_failures += 1
+                if consecutive_parse_failures >= parse_failure_threshold:
+                    safe_print(
+                        f"   [AI分析] 模型 {model_name} 连续 {consecutive_parse_failures} 次解析/格式校验失败，立即切换兜底模型",
+                        level="WARNING",
+                    )
+                    raise ModelRepeatedParseError(
+                        f"{model_name} 连续 {consecutive_parse_failures} 次解析失败"
+                    )
                 if attempt < max_retries - 1:
                     safe_print(f"   [AI分析] 准备第{attempt + 2}次重试...")
                     continue
-                raise ValueError("AI响应格式缺少必需字段或字段类型不正确。")
+                raise EmptyAIResponseError("AI响应格式缺少必需字段或字段类型不正确。")
             except json.JSONDecodeError as e:
                 safe_print(f"   [AI分析] 第{attempt + 1}次尝试JSON解析失败: {e}")
+                consecutive_parse_failures += 1
+                if consecutive_parse_failures >= parse_failure_threshold:
+                    safe_print(
+                        f"   [AI分析] 模型 {model_name} 连续 {consecutive_parse_failures} 次解析失败，立即切换兜底模型",
+                        level="WARNING",
+                    )
+                    raise ModelRepeatedParseError(
+                        f"{model_name} 连续 {consecutive_parse_failures} 次解析失败"
+                    )
                 if attempt < max_retries - 1:
                     safe_print(f"   [AI分析] 准备第{attempt + 2}次重试...")
                     continue
                 raise e
             except EmptyAIResponseError as e:
                 safe_print(f"   [AI分析] 第{attempt + 1}次尝试返回空响应: {e}")
+                consecutive_parse_failures += 1
+                if consecutive_parse_failures >= parse_failure_threshold:
+                    safe_print(
+                        f"   [AI分析] 模型 {model_name} 连续 {consecutive_parse_failures} 次解析失败，立即切换兜底模型",
+                        level="WARNING",
+                    )
+                    raise ModelRepeatedParseError(
+                        f"{model_name} 连续 {consecutive_parse_failures} 次解析失败"
+                    )
                 if attempt < max_retries - 1:
                     safe_print(f"   [AI分析] 准备第{attempt + 2}次重试...")
                     continue
                 raise e
 
+        except ModelRepeatedParseError:
+            # 解析连续失败的信号应原样抛给外层多模型循环去切兜底模型，
+            # 不要被通用 except 当成普通调用失败再走指数退避。
+            raise
         except Exception as e:
             if (
                 api_mode == CHAT_COMPLETIONS_API_MODE
@@ -504,23 +657,29 @@ async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
                 safe_print(repr(e))
                 safe_print(traceback.format_exc())
                 safe_print("-------------------------------------\n")
+            # 速率限制(429)意味着该模型已到用量上限，原地重试只会长时间卡住
+            # （旧行为会指数退避至多 12 次、最长 5 小时），因此首次遇到就立即
+            # 抛出给外层多模型循环，切换到兜底模型。
+            if is_rate_limit_error(e):
+                safe_print(
+                    f"   [AI分析] 模型 {model_name} 触发速率限制(429)，立即切换兜底模型: {e}",
+                    level="ERROR",
+                )
+                raise
             safe_print(f"   [AI分析] 第{attempt + 1}次尝试AI调用失败: {e}")
+            _MODEL_CIRCUIT.record_failure(model_name)
             if attempt < max_retries - 1:
-                if is_rate_limit_error(e):
-                    wait_seconds = get_retry_after_seconds(e)
-                    if wait_seconds is None:
-                        wait_seconds = min(
-                            RATE_LIMIT_MAX_DELAY_SECONDS,
-                            RATE_LIMIT_BASE_DELAY_SECONDS * (2 ** attempt),
-                        )
-                    # 加入少量抖动，避免多个并发商品在同一时刻集中重试导致再次触发限流。
-                    wait_seconds += random.uniform(0, wait_seconds * 0.2)
-                    safe_print(
-                        f"   [AI分析] 已触发速率限制(429)，将在 {wait_seconds:.0f} 秒后进行第{attempt + 2}次重试..."
-                    )
-                    await asyncio.sleep(wait_seconds)
-                else:
-                    safe_print(f"   [AI分析] 准备第{attempt + 2}次重试...")
+                # 非速率限制的一般调用失败：指数退避（带抖动），单次最长 GENERAL_FAILURE_MAX_BACKOFF_SECONDS。
+                # 与限流 5h 不同：服务不可用/超时不应每次等几小时。
+                wait_seconds = min(
+                    GENERAL_FAILURE_MAX_BACKOFF_SECONDS,
+                    RATE_LIMIT_BASE_DELAY_SECONDS * (2 ** attempt),
+                )
+                wait_seconds += random.uniform(0, wait_seconds * 0.2)
+                safe_print(
+                    f"   [AI分析] 已触发调用失败，将在 {wait_seconds:.0f} 秒后进行第{attempt + 2}次重试..."
+                )
+                await asyncio.sleep(wait_seconds)
                 continue
             else:
                 raise e
@@ -531,12 +690,54 @@ async def screen_product_title(
 ) -> tuple[bool, str]:
     """轻量级标题预筛：用 AI 判断商品标题是否「根本不符合」要求。
 
-    返回 (match, reason)。任何异常、AI 未配置或缺少参数时返回 (True, "")，
-    即「不跳过」，确保预筛失败不会漏掉潜在目标商品。
+    多模型兜底：主模型发生 API/网络错误时切换到兜底模型；其余异常或空响应不触发兜底，
+    保守地返回 (True, "") 即「不跳过」，确保预筛失败不会漏掉潜在目标商品。
     """
-    if client is None:
-        return True, ""
     if not title or not requirements:
+        return True, ""
+    runners = build_model_runners()
+    if not runners:
+        return True, ""
+    for idx, (client, model_name, enable_response_format) in enumerate(runners):
+        # 熔断开启：冷却期间跳过 AI 预筛，避免大批商品空转。
+        if _MODEL_CIRCUIT.is_open(model_name):
+            role = "主模型" if idx == 0 else f"兜底模型#{idx}"
+            safe_print(
+                f"   [AI标题预筛] {role} ({model_name}) 处于熔断冷却中，保守不跳过",
+                level="WARNING",
+            )
+            return True, ""
+        try:
+            return await _screen_with_single_model(
+                client, model_name, enable_response_format, title, keyword, requirements
+            )
+        except (openai.APIConnectionError, openai.APITimeoutError, openai.APIStatusError) as e:
+            role = "主模型" if idx == 0 else f"兜底模型#{idx}"
+            safe_print(f"   [AI标题预筛] {role} ({model_name}) 发生API/网络错误，切换下一模型: {e}", level="WARNING")
+            continue
+        except ModelRepeatedParseError as e:
+            role = "主模型" if idx == 0 else f"兜底模型#{idx}"
+            is_last = idx >= len(runners) - 1
+            if is_last:
+                safe_print(
+                    f"   [AI标题预筛] {role} ({model_name}) 连续解析失败且已是最后一个模型，保守不跳过: {e}",
+                    level="WARNING",
+                )
+                return True, ""
+            safe_print(
+                f"   [AI标题预筛] {role} ({model_name}) 解析连续失败，切换下一模型: {e}",
+                level="WARNING",
+            )
+            continue
+    # 所有模型均不可用（API/网络错误），保守地不跳过
+    return True, ""
+
+
+async def _screen_with_single_model(
+    client, model_name, enable_response_format, title: str, keyword: str, requirements: str
+) -> tuple[bool, str]:
+    """使用单一指定模型进行标题预筛（内部函数，不含多模型兜底）。"""
+    if client is None:
         return True, ""
 
     system_prompt = (
@@ -560,32 +761,80 @@ async def screen_product_title(
     ]
 
     api_mode = CHAT_COMPLETIONS_API_MODE
-    max_retries = 2
+    max_retries = 4
+    parse_failure_threshold = 2  # 连续 N 次解析失败则抛 ModelRepeatedParseError
+    consecutive_parse_failures = 0
     for attempt in range(max_retries):
         try:
             request_params = build_ai_request_params(
                 api_mode,
-                model=MODEL_NAME,
+                model=model_name,
                 messages=messages,
                 temperature=0.0,
-                # 标题预筛只输出结构化真假判断，固定小上限以控成本；
-                # 即使失败也会安全回退为"不跳过"，不随全局输出上限联动。
-                max_output_tokens=300,
-                enable_json_output=ENABLE_RESPONSE_FORMAT,
+                # MiniMax M2.x 会在正文里输出 思考 过程，1024 给足预算防止 JSON 截断；
+                # 预筛失败会安全回退为"不跳过"，固定值不随全局输出上限联动。
+                max_output_tokens=1024,
+                enable_json_output=enable_response_format,
             )
-            response = await create_ai_response_async(client, api_mode, request_params)
+            # 按模型关闭 thinking：MiniMax 用 thinking.type=disabled，腾讯 Hy3 用 enable_thinking=False
+            thinking_extra = build_thinking_disable_extra(model_name)
+            if thinking_extra:
+                request_params["extra_body"] = thinking_extra
+
+            response = await asyncio.wait_for(
+                create_ai_response_async(client, api_mode, request_params),
+                timeout=AI_CALL_TIMEOUT_SECONDS,
+            )
             content = extract_ai_response_content(response)
-            parsed = parse_ai_response_json(content)
+            try:
+                parsed = parse_ai_response_json(content)
+            except (EmptyAIResponseError, json.JSONDecodeError, ValueError) as parse_exc:
+                consecutive_parse_failures += 1
+                if consecutive_parse_failures >= parse_failure_threshold:
+                    safe_print(
+                        f"   [AI标题预筛] 模型 {model_name} 连续 {consecutive_parse_failures} 次解析失败，立即切换兜底模型: {parse_exc}",
+                        level="WARNING",
+                    )
+                    raise ModelRepeatedParseError(
+                        f"{model_name} 连续 {consecutive_parse_failures} 次解析失败"
+                    ) from parse_exc
+                safe_print(
+                    f"   [AI标题预筛] 第{attempt + 1}次解析失败，准备第{attempt + 2}次重试: {parse_exc}"
+                )
+                continue
             match_val = parsed.get("match")
             if isinstance(match_val, str):
                 match_val = str(match_val).strip().lower() in {"true", "1", "是", "yes"}
             match = bool(match_val)
             reason = str(parsed.get("reason", ""))[:200]
+            _MODEL_CIRCUIT.record_success(model_name)
             return match, reason
         except Exception as exc:  # noqa: BLE001
+            # 速率限制(429)意味着该模型已到用量上限，立即抛出给外层多模型循环切换兜底模型，
+            # 避免在这个模型上长时间退避重试。
+            if is_rate_limit_error(exc):
+                safe_print(
+                    f"   [AI标题预筛] 模型 {model_name} 触发速率限制(429)，立即切换兜底模型: {exc}",
+                    level="ERROR",
+                )
+                raise
+            if isinstance(exc, ModelRepeatedParseError):
+                raise
+            _MODEL_CIRCUIT.record_failure(model_name)
             safe_print(f"   [AI标题预筛] 第{attempt + 1}次调用失败: {exc}")
             if attempt < max_retries - 1:
-                await asyncio.sleep(1)
+                wait_seconds = min(
+                    GENERAL_FAILURE_MAX_BACKOFF_SECONDS,
+                    RATE_LIMIT_BASE_DELAY_SECONDS * (2 ** attempt),
+                )
+                wait_seconds += random.uniform(0, wait_seconds * 0.2)
+                safe_print(
+                    f"   [AI标题预筛] 已触发调用失败，将在 {wait_seconds:.0f} 秒后进行第{attempt + 2}次重试..."
+                )
+                await asyncio.sleep(wait_seconds)
                 continue
+            # 最后一次尝试仍失败：API/网络错误交给外层多模型兜底，其余保守不跳过
+            if isinstance(exc, (openai.APIConnectionError, openai.APITimeoutError, openai.APIStatusError)):
+                raise
             return True, ""
     return True, ""

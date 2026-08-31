@@ -7,6 +7,7 @@ from src.infrastructure.config.env_manager import env_manager
 
 
 _SETTINGS_ENV_KEYS = [
+    "AI_MAX_OUTPUT_TOKENS",
     "ACCOUNT_ROTATION_ENABLED",
     "ACCOUNT_ROTATION_MODE",
     "ACCOUNT_ROTATION_RETRY_LIMIT",
@@ -334,10 +335,16 @@ def test_ai_settings_fall_back_to_runtime_environment_when_env_file_missing(tmp_
     ai_response = client.get("/api/settings/ai")
     assert ai_response.status_code == 200
     assert ai_response.json() == {
-        "OPENAI_BASE_URL": "https://runtime.example.com/v1",
-        "OPENAI_MODEL_NAME": "runtime-model",
+        "models": [
+            {
+                "api_key": None,
+                "base_url": "https://runtime.example.com/v1",
+                "model_name": "runtime-model",
+                "enable_response_format": True,
+                "proxy_url": "http://127.0.0.1:7890",
+            }
+        ],
         "SKIP_AI_ANALYSIS": False,
-        "PROXY_URL": "http://127.0.0.1:7890",
         "AI_MAX_OUTPUT_TOKENS": 4000,
     }
 
